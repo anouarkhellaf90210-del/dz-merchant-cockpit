@@ -34,7 +34,10 @@ class MerchantCockpitService : Service() {
     private var storeFilter: String = "all"
     private val handler = Handler(Looper.getMainLooper())
     private var isStealthHidden = false
+    private var lastKnownNewOrdersCount = -1
     private var lastKnownTopOrderId: String = ""
+    private val seenOrderIds = mutableSetOf<String>()
+    private var isFirstSync = true
     private var loopbackServer: ServerSocket? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var isServiceAlive = true
@@ -42,7 +45,7 @@ class MerchantCockpitService : Service() {
     private val syncRunnable = object : Runnable {
         override fun run() {
             triggerSync(forceOpen = false)
-            handler.postDelayed(this, 3000)
+            handler.postDelayed(this, 2500)
         }
     }
 
@@ -53,13 +56,7 @@ class MerchantCockpitService : Service() {
             if (it.isNotBlank()) storeFilter = it
         }
         val forceOpen = intent?.getBooleanExtra("force_open", false) ?: false
-        if (forceOpen) {
-            handler.post { wakeUpScreenAndPopup() }
-        } else {
-            isStealthHidden = false
-            cockpitView?.visibility = View.VISIBLE
-            windowParams?.let { windowManager?.updateViewLayout(cockpitView, it) }
-        }
+        exitStealthOnMainThread(openCard = forceOpen)
         triggerSync(forceOpen = forceOpen)
         return START_STICKY
     }
@@ -91,8 +88,7 @@ class MerchantCockpitService : Service() {
         @Suppress("DEPRECATION")
         val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -111,25 +107,16 @@ class MerchantCockpitService : Service() {
             context = this,
             onPlayChime = { playOrderArrivalChime() },
             onHideStealth = {
-                isStealthHidden = true
-                cockpitView?.visibility = View.GONE
-                windowParams?.let { windowManager?.updateViewLayout(cockpitView, it) }
-                Toast.makeText(
-                    this,
-                    "تم إخفاء كبسولة التاجر 🙈 • ستنبثق تلقائياً كالمسنجر فور وصول طلبية جديدة!",
-                    Toast.LENGTH_SHORT
-                ).show()
+                enterStealthOnMainThread(showToast = true)
             },
             onCloseService = {
-                isStealthHidden = true
-                cockpitView?.visibility = View.GONE
-                windowParams?.let { windowManager?.updateViewLayout(cockpitView, it) }
+                enterStealthOnMainThread(showToast = false)
             },
             onOrderAction = { orderId, nextStatus ->
                 playOrderArrivalChime()
                 Toast.makeText(
                     this,
-                    "⚡ تم تحديث حالة الطلب وإشعار رادار الزبون فوراً!",
+                    "⚡ تم تحديث حالة الطرد وإشعار رادار الزبون فوراً!",
                     Toast.LENGTH_SHORT
                 ).show()
                 Thread {
@@ -154,6 +141,7 @@ class MerchantCockpitService : Service() {
         var initialTouchY = 0f
 
         cockpitView?.bubbleWrapper?.setOnTouchListener { _, event ->
+            if (isStealthHidden) return@setOnTouchListener false
             val curMetrics = resources.displayMetrics
             val screenW = curMetrics.widthPixels
             val screenH = curMetrics.heightPixels
@@ -194,6 +182,48 @@ class MerchantCockpitService : Service() {
         handler.post(syncRunnable)
     }
 
+    private fun enterStealthOnMainThread(showToast: Boolean) {
+        handler.post {
+            isStealthHidden = true
+            cockpitView?.enterOpticalStealthMode()
+            windowParams?.let { p ->
+                p.flags = p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                p.width = 1
+                p.height = 1
+                try {
+                    windowManager?.updateViewLayout(cockpitView, p)
+                } catch (_: Exception) {}
+            }
+            if (showToast) {
+                Toast.makeText(
+                    this,
+                    "تم إخفاء كبسولة التاجر 🙈 • ستنبثق تلقائياً فور رصد أي طلبية جديدة!",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun exitStealthOnMainThread(openCard: Boolean) {
+        handler.post {
+            isStealthHidden = false
+            windowParams?.let { p ->
+                p.flags = p.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                p.width = WindowManager.LayoutParams.WRAP_CONTENT
+                p.height = WindowManager.LayoutParams.WRAP_CONTENT
+                try {
+                    windowManager?.updateViewLayout(cockpitView, p)
+                } catch (_: Exception) {}
+            }
+            if (openCard) {
+                cockpitView?.exitOpticalStealthAndOpen()
+            } else {
+                cockpitView?.exitOpticalStealthAndOpen()
+                cockpitView?.toggleCockpit(false)
+            }
+        }
+    }
+
     private fun wakeUpScreenAndPopup() {
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -205,11 +235,7 @@ class MerchantCockpitService : Service() {
             screenLock.acquire(5000)
         } catch (_: Exception) {}
 
-        isStealthHidden = false
-        cockpitView?.visibility = View.VISIBLE
-        windowParams?.let { windowManager?.updateViewLayout(cockpitView, it) }
-        cockpitView?.focusNewOrdersTab()
-        cockpitView?.toggleCockpit(true)
+        exitStealthOnMainThread(openCard = true)
         playOrderArrivalChime()
         Toast.makeText(
             this,
@@ -290,9 +316,26 @@ class MerchantCockpitService : Service() {
                 val currentTopId = currentTopNewOrder?.id ?: ""
 
                 var hasNewIncomingOrder = false
-                if (lastKnownTopOrderId.isNotEmpty() && currentTopId.isNotEmpty() && currentTopId != lastKnownTopOrderId) {
-                    hasNewIncomingOrder = true
+                if (!isFirstSync) {
+                    if (lastKnownNewOrdersCount != -1 && payload.newCount > lastKnownNewOrdersCount) {
+                        hasNewIncomingOrder = true
+                    }
+                    if (currentTopId.isNotEmpty() && currentTopId != lastKnownTopOrderId && !seenOrderIds.contains(currentTopId)) {
+                        hasNewIncomingOrder = true
+                    }
+                    for (o in payload.orders) {
+                        if (o.stage == "new" && !seenOrderIds.contains(o.id)) {
+                            hasNewIncomingOrder = true
+                            break
+                        }
+                    }
                 }
+
+                for (o in payload.orders) {
+                    seenOrderIds.add(o.id)
+                }
+                isFirstSync = false
+                lastKnownNewOrdersCount = payload.newCount
                 if (currentTopId.isNotEmpty()) {
                     lastKnownTopOrderId = currentTopId
                 }

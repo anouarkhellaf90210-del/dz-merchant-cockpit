@@ -8,6 +8,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -28,6 +30,7 @@ class MerchantCockpitOverlayView(
     private val onSelectStore: (String) -> Unit
 ) : LinearLayout(context) {
 
+    private val mainHandler = Handler(Looper.getMainLooper())
     val bubbleWrapper: FrameLayout
     private val badgeText: TextView
     private val cockpitCard: LinearLayout
@@ -158,7 +161,6 @@ class MerchantCockpitOverlayView(
                 setColor(Color.parseColor("#E11D48"))
             }
             setOnClickListener {
-                toggleCockpit(false)
                 onHideStealth()
             }
         }
@@ -602,8 +604,8 @@ class MerchantCockpitOverlayView(
             setOnClickListener {
                 val ord = getCurrentOrder() ?: return@setOnClickListener
                 val nextStageAndStatus = when (ord.stage) {
-                    "new" -> Pair("preparing", "confirmed")
-                    "preparing" -> Pair("shipping", "out_for_delivery")
+                    "new" -> Pair("preparing", "preparing")
+                    "preparing" -> Pair("shipping", "shipped")
                     "shipping" -> Pair("delivered", "delivered")
                     else -> null
                 } ?: return@setOnClickListener
@@ -706,7 +708,6 @@ class MerchantCockpitOverlayView(
                 setStroke(dp(1), Color.parseColor("#27272A"))
             }
             setOnClickListener {
-                toggleCockpit(false)
                 onHideStealth()
             }
         }
@@ -734,6 +735,27 @@ class MerchantCockpitOverlayView(
 
         addView(cockpitCard)
         refreshStageHighlight()
+    }
+
+    fun enterOpticalStealthMode() {
+        mainHandler.post {
+            cockpitCard.visibility = View.GONE
+            bubbleWrapper.alpha = 0.01f
+            bubbleWrapper.layoutParams = LayoutParams(1, 1)
+        }
+    }
+
+    fun exitOpticalStealthAndOpen() {
+        mainHandler.post {
+            visibility = View.VISIBLE
+            bubbleWrapper.layoutParams = LayoutParams(dp(62), dp(62))
+            bubbleWrapper.alpha = 1f
+            selectedStage = "new"
+            currentOrderIndex = 0
+            refreshStageHighlight()
+            refreshOrderCard()
+            cockpitCard.visibility = View.VISIBLE
+        }
     }
 
     private fun recalculateCountsAndFollowOrder(orderId: String, targetStage: String) {
@@ -874,7 +896,7 @@ class MerchantCockpitOverlayView(
     }
 
     fun focusNewOrdersTab() {
-        post {
+        mainHandler.post {
             selectedStage = "new"
             currentOrderIndex = 0
             refreshStageHighlight()
@@ -883,7 +905,7 @@ class MerchantCockpitOverlayView(
     }
 
     fun updatePayload(payload: CockpitPayload) {
-        post {
+        mainHandler.post {
             var n = 0
             var prep = 0
             var ship = 0
