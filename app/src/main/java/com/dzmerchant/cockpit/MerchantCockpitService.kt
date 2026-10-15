@@ -2,10 +2,8 @@ package com.dzmerchant.cockpit
 
 import android.annotation.SuppressLint
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.media.AudioManager
 import android.media.ToneGenerator
@@ -13,6 +11,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.Gravity
@@ -33,30 +32,17 @@ class MerchantCockpitService : Service() {
     private var cockpitView: MerchantCockpitOverlayView? = null
     private var storeFilter: String = "all"
     private val handler = Handler(Looper.getMainLooper())
-    private var isScreenOn = true
     private var isStealthHidden = false
-    private var lastKnownNewOrdersCount = -1
-    private var lastKnownTopNewOrderId: String = ""
+    private val seenOrderIds = mutableSetOf<String>()
+    private var isFirstSync = true
     private var loopbackServer: ServerSocket? = null
+    private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var isServiceAlive = true
-
-    private val screenReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
-                isScreenOn = false
-            } else if (intent?.action == Intent.ACTION_SCREEN_ON) {
-                isScreenOn = true
-                triggerSync(forceOpen = false)
-            }
-        }
-    }
 
     private val syncRunnable = object : Runnable {
         override fun run() {
-            if (isScreenOn) {
-                triggerSync(forceOpen = false)
-            }
-            handler.postDelayed(this, 4000)
+            triggerSync(forceOpen = false)
+            handler.postDelayed(this, 3000)
         }
     }
 
@@ -72,10 +58,17 @@ class MerchantCockpitService : Service() {
         return START_STICKY
     }
 
-    @SuppressLint("ClickableViewAccessibility")
+    @SuppressLint("ClickableViewAccessibility", "WakelockTimeout")
     override fun onCreate() {
         super.onCreate()
         isServiceAlive = true
+
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dzmerchant:CockpitWatchdog")
+            wakeLock?.acquire()
+        } catch (_: Exception) {}
+
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
         val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -89,11 +82,17 @@ class MerchantCockpitService : Service() {
         val bubblePx = (58 * metrics.density).toInt()
         val defaultRightX = (metrics.widthPixels - bubblePx - 24).coerceAtLeast(20)
 
+        @Suppress("DEPRECATION")
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            flags,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -109,40 +108,29 @@ class MerchantCockpitService : Service() {
                 cockpitView?.visibility = View.GONE
                 Toast.makeText(
                     this,
-                    "تم إخفاء كبسولة التاجر 🙈 • ستنبثق تلقائياً فور وصول طلبية جديدة!",
-                    Toast.LENGTH_LONG
+                    "تم إخفاء كبسولة التاجر 🙈 • ستنبثق تلقائياً كالمسنجر فور وصول طلبية جديدة!",
+                    Toast.LENGTH_SHORT
                 ).show()
             },
-            onCloseService = { stopSelf() },
+            onCloseService = {
+                isStealthHidden = true
+                cockpitView?.visibility = View.GONE
+            },
             onOrderAction = { orderId, nextStatus ->
+                playOrderArrivalChime()
+                Toast.makeText(
+                    this,
+                    "⚡ تم تحديث حالة الطلب وإشعار رادار الزبون فوراً!",
+                    Toast.LENGTH_SHORT
+                ).show()
                 Thread {
-                    val ok = CockpitApiClient.updateOrderStatus(orderId, nextStatus)
-                    if (ok) {
-                        CockpitApiClient.notifyLocalCustomerCapsuleRefresh()
-                        handler.post {
-                            playOrderArrivalChime()
-                            Toast.makeText(
-                                this,
-                                "✅ تم تحديث حالة الطرد وإشعار رادار الزبون فوراً",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                        triggerSync(forceOpen = false)
-                    } else {
-                        handler.post {
-                            Toast.makeText(
-                                this,
-                                "⚠️ تعذر تحديث الحالة، يرجى المحاولة مرة أخرى",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
+                    CockpitApiClient.notifyLocalCustomerCapsuleRefresh(nextStatus)
+                    CockpitApiClient.updateOrderStatus(orderId, nextStatus)
                 }.start()
             },
             onToggleStore = { storeId, nextOpen ->
                 Thread {
-                    val ok = CockpitApiClient.toggleStoreStatus(storeId, nextOpen)
-                    if (ok) triggerSync(forceOpen = false)
+                    CockpitApiClient.toggleStoreStatus(storeId, nextOpen)
                 }.start()
             },
             onSelectStore = { slug ->
@@ -193,15 +181,31 @@ class MerchantCockpitService : Service() {
         }
 
         windowManager?.addView(cockpitView, params)
-
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_ON)
-            addAction(Intent.ACTION_SCREEN_OFF)
-        }
-        registerReceiver(screenReceiver, filter)
-
         startLocalWakeupServer()
         handler.post(syncRunnable)
+    }
+
+    private fun wakeUpScreenAndPopup() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            @Suppress("DEPRECATION")
+            val screenLock = pm.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "dzmerchant:OrderAlertWakeup"
+            )
+            screenLock.acquire(5000)
+        } catch (_: Exception) {}
+
+        isStealthHidden = false
+        cockpitView?.visibility = View.VISIBLE
+        cockpitView?.focusNewOrdersTab()
+        cockpitView?.toggleCockpit(true)
+        playOrderArrivalChime()
+        Toast.makeText(
+            this,
+            "👑 طلبية جديدة وصلت المتجر الآن!",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun startLocalWakeupServer() {
@@ -222,6 +226,10 @@ class MerchantCockpitService : Service() {
                             }
 
                             val shouldForceOpen = reqLine.contains("event=new_order") || reqLine.contains("open=1")
+                            if (shouldForceOpen) {
+                                storeFilter = "all"
+                                handler.post { wakeUpScreenAndPopup() }
+                            }
                             triggerSync(forceOpen = shouldForceOpen)
 
                             val out: OutputStream = client.getOutputStream()
@@ -255,10 +263,10 @@ class MerchantCockpitService : Service() {
 
             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 120, 80, 180), -1))
+                vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 140, 80, 200), -1))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator?.vibrate(300)
+                vibrator?.vibrate(350)
             }
         } catch (_: Exception) {}
     }
@@ -267,34 +275,24 @@ class MerchantCockpitService : Service() {
         Thread {
             val payload = CockpitApiClient.fetchCockpit(storeFilter)
             if (payload != null) {
-                val topNewOrder = payload.orders.firstOrNull { it.stage == "new" }
-                val topNewId = topNewOrder?.id ?: ""
-
-                val hasBrandNewOrder =
-                    (lastKnownNewOrdersCount != -1 && payload.newCount > lastKnownNewOrdersCount) ||
-                    (lastKnownTopNewOrderId.isNotEmpty() && topNewId.isNotEmpty() && topNewId != lastKnownTopNewOrderId && payload.newCount >= lastKnownNewOrdersCount)
-
-                if (hasBrandNewOrder || forceOpen) {
-                    handler.post {
-                        isStealthHidden = false
-                        cockpitView?.visibility = View.VISIBLE
-                        cockpitView?.toggleCockpit(true)
-                        if (hasBrandNewOrder) {
-                            playOrderArrivalChime()
-                            Toast.makeText(
-                                this,
-                                "👑 طلبية جديدة وصلت المتجر الآن!",
-                                Toast.LENGTH_LONG
-                            ).show()
+                var discoveredNewOrder = false
+                for (o in payload.orders) {
+                    if (o.stage == "new" && !seenOrderIds.contains(o.id)) {
+                        if (!isFirstSync) {
+                            discoveredNewOrder = true
                         }
+                        seenOrderIds.add(o.id)
+                    } else {
+                        seenOrderIds.add(o.id)
                     }
                 }
+                isFirstSync = false
 
-                lastKnownNewOrdersCount = payload.newCount
-                if (topNewId.isNotEmpty()) {
-                    lastKnownTopNewOrderId = topNewId
-                }
                 cockpitView?.updatePayload(payload)
+
+                if (discoveredNewOrder || forceOpen) {
+                    handler.post { wakeUpScreenAndPopup() }
+                }
             }
         }.start()
     }
@@ -303,8 +301,8 @@ class MerchantCockpitService : Service() {
         super.onDestroy()
         isServiceAlive = false
         handler.removeCallbacks(syncRunnable)
+        try { wakeLock?.release() } catch (_: Exception) {}
         try { loopbackServer?.close() } catch (_: Exception) {}
-        try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
         if (cockpitView != null) {
             windowManager?.removeView(cockpitView)
         }

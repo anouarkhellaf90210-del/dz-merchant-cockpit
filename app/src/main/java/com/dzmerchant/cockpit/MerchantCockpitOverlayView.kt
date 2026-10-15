@@ -23,96 +23,83 @@ class MerchantCockpitOverlayView(
     private val onPlayChime: () -> Unit,
     private val onHideStealth: () -> Unit,
     private val onCloseService: () -> Unit,
-    private val onOrderAction: (orderId: String, nextStatus: String) -> Unit,
-    private val onToggleStore: (storeId: String, nextOpen: Boolean) -> Unit,
-    private val onSelectStore: (storeSlug: String) -> Unit
-) : FrameLayout(context) {
-
-    private val density = context.resources.displayMetrics.density
-    private fun dp(value: Int): Int = (value * density).toInt()
+    private val onOrderAction: (String, String) -> Unit,
+    private val onToggleStore: (String, Boolean) -> Unit,
+    private val onSelectStore: (String) -> Unit
+) : LinearLayout(context) {
 
     val bubbleWrapper: FrameLayout
     private val badgeText: TextView
-    private val onlineDot: View
-
     private val cockpitCard: LinearLayout
     private val storeTitleText: TextView
     private val storeLockBtn: TextView
     private val storeTabsRow: LinearLayout
-
     private val gmvValueText: TextView
     private val gmvOrdersBadge: TextView
     private val codValueText: TextView
-
-    private val tabNewCount: TextView
-    private val tabPrepCount: TextView
-    private val tabShipCount: TextView
-    private val tabDelivCount: TextView
 
     private val tabNewBox: LinearLayout
     private val tabPrepBox: LinearLayout
     private val tabShipBox: LinearLayout
     private val tabDelivBox: LinearLayout
 
+    private val tabNewCount: TextView
+    private val tabPrepCount: TextView
+    private val tabShipCount: TextView
+    private val tabDelivCount: TextView
+
+    private val pagerText: TextView
     private val orderRefText: TextView
     private val orderTimeText: TextView
-    private val pagerText: TextView
     private val customerNameText: TextView
+    private val orderPriceText: TextView
     private val customerPhoneText: TextView
     private val carrierBadgeText: TextView
-    private val orderPriceText: TextView
     private val wilayaBadgeText: TextView
     private val itemsSummaryText: TextView
     private val primaryActionBtn: TextView
 
     private var currentPayload: CockpitPayload? = null
+    private var selectedStoreFilter: String = "all"
     private var selectedStage: String = "new"
     private var currentOrderIndex: Int = 0
-    private var selectedStoreFilter: String = "all"
+    private val localStageOverrides = mutableMapOf<String, String>()
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     init {
-        // 1. الفقاعة العائمة الملكية للتاجر (54dp) مع العداد الأحمر
+        orientation = VERTICAL
+        gravity = Gravity.END
+
         bubbleWrapper = FrameLayout(context).apply {
-            layoutParams = LayoutParams(dp(58), dp(58)).apply {
-                gravity = Gravity.TOP or Gravity.END
-            }
+            layoutParams = LayoutParams(dp(62), dp(62))
         }
 
-        val avatarCircle = FrameLayout(context).apply {
-            layoutParams = LayoutParams(dp(50), dp(50)).apply {
-                gravity = Gravity.CENTER
-            }
+        val circleBubble = TextView(context).apply {
+            text = "👑"
+            textSize = 24f
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#18181B"))
+                setColor(Color.parseColor("#0D0D12"))
                 setStroke(dp(2), Color.parseColor("#F59E0B"))
             }
-            val crownIcon = TextView(context).apply {
-                text = "👑"
-                textSize = 20f
-                gravity = Gravity.CENTER
-                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-            }
-            addView(crownIcon)
         }
-        bubbleWrapper.addView(avatarCircle)
 
-        // النقطة الخضراء لحالة المتجر
-        onlineDot = View(context).apply {
-            layoutParams = LayoutParams(dp(12), dp(12)).apply {
-                gravity = Gravity.BOTTOM or Gravity.END
+        val onlineDot = View(context).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(12), dp(12), Gravity.BOTTOM or Gravity.END).apply {
                 rightMargin = dp(4)
                 bottomMargin = dp(4)
             }
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#10B981"))
-                setStroke(dp(2), Color.parseColor("#09090B"))
+                setStroke(dp(2), Color.parseColor("#0D0D12"))
             }
         }
-        bubbleWrapper.addView(onlineDot)
 
-        // الشارة الحمراء لعدد الطلبات الجديدة (24)
         badgeText = TextView(context).apply {
             text = "0"
             setTextColor(Color.WHITE)
@@ -120,43 +107,44 @@ class MerchantCockpitOverlayView(
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(1), dp(5), dp(1))
-            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, dp(20)).apply {
-                gravity = Gravity.TOP or Gravity.END
-            }
+            layoutParams = FrameLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT,
+                LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END
+            )
             background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(10).toFloat()
                 setColor(Color.parseColor("#E11D48"))
-                setStroke(dp(1), Color.parseColor("#09090B"))
             }
+            visibility = View.GONE
         }
+
+        bubbleWrapper.addView(circleBubble)
+        bubbleWrapper.addView(onlineDot)
         bubbleWrapper.addView(badgeText)
         addView(bubbleWrapper)
 
-        // 2. بطاقة قمرة القيادة الموسعة (مطابقة للصورة 1000045298.jpg)
-        val screenWidth = context.resources.displayMetrics.widthPixels
-        val cardWidth = (screenWidth * 0.94).toInt().coerceAtMost(dp(390))
+        val screenWidth = resources.displayMetrics.widthPixels
+        val cardWidth = (screenWidth * 0.92).toInt().coerceAtMost(dp(370))
 
         cockpitCard = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
+            orientation = VERTICAL
             layoutParams = LayoutParams(cardWidth, LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(62)
+                topMargin = dp(6)
             }
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(26).toFloat()
-                setColor(Color.parseColor("#F70D0D11"))
-                setStroke(dp(1), Color.parseColor("#4D854D0E"))
+                cornerRadius = dp(24).toFloat()
+                setColor(Color.parseColor("#0D0D12"))
+                setStroke(dp(1), Color.parseColor("#3F2E14"))
             }
+            visibility = View.GONE
         }
 
-        // --- أ. صف الهيدر (الإغلاق، التصغير، حالة المتجر، اسم المتجر) ---
         val headerRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
 
         val closeBtn = TextView(context).apply {
@@ -164,14 +152,14 @@ class MerchantCockpitOverlayView(
             setTextColor(Color.WHITE)
             textSize = 13f
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
+            layoutParams = LayoutParams(dp(32), dp(32))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#E11D48"))
             }
             setOnClickListener {
                 toggleCockpit(false)
-                onCloseService()
+                onHideStealth()
             }
         }
 
@@ -180,7 +168,7 @@ class MerchantCockpitOverlayView(
             setTextColor(Color.WHITE)
             textSize = 14f
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32)).apply {
+            layoutParams = LayoutParams(dp(32), dp(32)).apply {
                 leftMargin = dp(8)
             }
             background = GradientDrawable().apply {
@@ -196,7 +184,7 @@ class MerchantCockpitOverlayView(
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
             setPadding(dp(10), dp(6), dp(10), dp(6))
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
                 leftMargin = dp(8)
             }
             background = GradientDrawable().apply {
@@ -206,15 +194,18 @@ class MerchantCockpitOverlayView(
             }
             setOnClickListener {
                 currentPayload?.let { p ->
-                    onToggleStore(p.storeId, !p.isStoreOpen)
+                    val nextOpen = !p.isStoreOpen
+                    p.isStoreOpen = nextOpen
+                    updatePayload(p)
+                    onToggleStore(p.storeId, nextOpen)
                 }
             }
         }
 
         val titleCol = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = VERTICAL
             gravity = Gravity.END
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         }
 
         storeTitleText = TextView(context).apply {
@@ -241,35 +232,32 @@ class MerchantCockpitOverlayView(
         headerRow.addView(titleCol)
         cockpitCard.addView(headerRow)
 
-        // --- ب. شريط المتاجر المتعددة ---
         val storeScroll = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(10)
                 bottomMargin = dp(10)
             }
         }
         storeTabsRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = HORIZONTAL
             gravity = Gravity.END
         }
         storeScroll.addView(storeTabsRow)
         cockpitCard.addView(storeScroll)
 
-        // --- ج. بطاقتا السيولة النقدية (GMV + COD) ---
         val financeRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            orientation = HORIZONTAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(10)
             }
         }
 
-        // بطاقة السيولة بالشارع (يسار)
         val codCard = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = VERTICAL
             gravity = Gravity.END
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                 rightMargin = dp(5)
             }
             background = GradientDrawable().apply {
@@ -293,12 +281,11 @@ class MerchantCockpitOverlayView(
         codCard.addView(codLabel)
         codCard.addView(codValueText)
 
-        // بطاقة مبيعات اليوم (يمين)
         val gmvCard = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = VERTICAL
             gravity = Gravity.END
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                 leftMargin = dp(5)
             }
             background = GradientDrawable().apply {
@@ -313,7 +300,7 @@ class MerchantCockpitOverlayView(
             textSize = 10f
         }
         val gmvInnerRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             setPadding(0, dp(4), 0, 0)
         }
@@ -343,20 +330,19 @@ class MerchantCockpitOverlayView(
         financeRow.addView(gmvCard)
         cockpitCard.addView(financeRow)
 
-        // --- د. تبويبات الفلترة الأربعة ---
         val stagesRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            orientation = HORIZONTAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(10)
             }
         }
 
         fun createStageTab(label: String, icon: String, stageKey: String): Pair<LinearLayout, TextView> {
             val box = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
+                orientation = VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(dp(6), dp(8), dp(6), dp(8))
-                layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+                layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                     setMargins(dp(3), 0, dp(3), 0)
                 }
                 setOnClickListener {
@@ -406,11 +392,10 @@ class MerchantCockpitOverlayView(
         stagesRow.addView(tabNewBox)
         cockpitCard.addView(stagesRow)
 
-        // --- هـ. بطاقة فرز الطلب التفاعلية (Order Triage Deck) ---
         val orderDeck = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = VERTICAL
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(10)
             }
             background = GradientDrawable().apply {
@@ -420,11 +405,10 @@ class MerchantCockpitOverlayView(
             }
         }
 
-        // شريط الترقيم والمرجع
         val deckTopRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
 
         val prevBtn = TextView(context).apply {
@@ -432,7 +416,7 @@ class MerchantCockpitOverlayView(
             setTextColor(Color.WHITE)
             textSize = 13f
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
+            layoutParams = LayoutParams(dp(28), dp(28))
             background = GradientDrawable().apply {
                 cornerRadius = dp(8).toFloat()
                 setColor(Color.parseColor("#27272A"))
@@ -457,7 +441,7 @@ class MerchantCockpitOverlayView(
             setTextColor(Color.WHITE)
             textSize = 13f
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
+            layoutParams = LayoutParams(dp(28), dp(28))
             background = GradientDrawable().apply {
                 cornerRadius = dp(8).toFloat()
                 setColor(Color.parseColor("#27272A"))
@@ -476,7 +460,7 @@ class MerchantCockpitOverlayView(
             setTextColor(Color.parseColor("#A1A1AA"))
             textSize = 10f
             gravity = Gravity.END
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                 rightMargin = dp(8)
             }
         }
@@ -501,11 +485,10 @@ class MerchantCockpitOverlayView(
         deckTopRow.addView(orderRefText)
         orderDeck.addView(deckTopRow)
 
-        // معلومات الزبون والسعر
         val custRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(10)
             }
         }
@@ -523,25 +506,24 @@ class MerchantCockpitOverlayView(
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.END
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         }
 
         custRow.addView(orderPriceText)
         custRow.addView(customerNameText)
         orderDeck.addView(custRow)
 
-        // صف الهاتف والشريحة والولاية
         val subCustRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(6)
                 bottomMargin = dp(8)
             }
         }
 
         wilayaBadgeText = TextView(context).apply {
-            text = "📍 الجزائر"
+            text = "📍 43 - ميلة"
             setTextColor(Color.parseColor("#A5B4FC"))
             textSize = 10f
             setPadding(dp(8), dp(3), dp(8), dp(3))
@@ -553,7 +535,7 @@ class MerchantCockpitOverlayView(
         }
 
         val spacer = View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+            layoutParams = LayoutParams(0, 1, 1f)
         }
 
         carrierBadgeText = TextView(context).apply {
@@ -561,7 +543,7 @@ class MerchantCockpitOverlayView(
             setTextColor(Color.parseColor("#34D399"))
             textSize = 10f
             setPadding(dp(6), dp(2), dp(6), dp(2))
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
                 rightMargin = dp(6)
             }
             background = GradientDrawable().apply {
@@ -583,14 +565,13 @@ class MerchantCockpitOverlayView(
         subCustRow.addView(customerPhoneText)
         orderDeck.addView(subCustRow)
 
-        // سطر السلع
         itemsSummaryText = TextView(context).apply {
             text = "---"
             setTextColor(Color.parseColor("#E4E4E7"))
             textSize = 11f
             gravity = Gravity.END
             setPadding(dp(10), dp(6), dp(10), dp(6))
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(10)
             }
             background = GradientDrawable().apply {
@@ -600,15 +581,16 @@ class MerchantCockpitOverlayView(
         }
         orderDeck.addView(itemsSummaryText)
 
-        // زر الإجراء الرئيسي (قبول وتأكيد الطلب فوراً)
         primaryActionBtn = TextView(context).apply {
             text = "⚡ قبول وتأكيد الطلب فوراً ⚡"
             setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setPadding(0, dp(11), 0, dp(11))
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            isClickable = true
+            isFocusable = true
+            setPadding(0, dp(12), 0, dp(12))
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(10)
             }
             background = GradientDrawable(
@@ -619,23 +601,29 @@ class MerchantCockpitOverlayView(
             }
             setOnClickListener {
                 val ord = getCurrentOrder() ?: return@setOnClickListener
-                val nextStatus = when (ord.stage) {
-                    "new" -> "confirmed"
-                    "preparing" -> "out_for_delivery"
-                    "shipping" -> "delivered"
-                    else -> ""
-                }
-                if (nextStatus.isNotEmpty()) {
-                    onOrderAction(ord.id, nextStatus)
-                }
+                val nextStageAndStatus = when (ord.stage) {
+                    "new" -> Pair("preparing", "confirmed")
+                    "preparing" -> Pair("shipping", "out_for_delivery")
+                    "shipping" -> Pair("delivered", "delivered")
+                    else -> null
+                } ?: return@setOnClickListener
+
+                val nextStage = nextStageAndStatus.first
+                val nextStatus = nextStageAndStatus.second
+
+                localStageOverrides[ord.id] = nextStage
+                ord.stage = nextStage
+                ord.status = nextStatus
+
+                recalculateCountsAndFollowOrder(ord.id, nextStage)
+                onOrderAction(ord.id, nextStatus)
             }
         }
         orderDeck.addView(primaryActionBtn)
 
-        // شريط الإجراءات الأربعة السريعة (اتصال، واتساب، بوليصة، التفاصيل)
         val quickActionsRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            orientation = HORIZONTAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
 
         fun createQuickActionBtn(title: String, isGreen: Boolean = false, onClick: () -> Unit): TextView {
@@ -645,7 +633,7 @@ class MerchantCockpitOverlayView(
                 textSize = 11f
                 gravity = Gravity.CENTER
                 setPadding(dp(4), dp(8), dp(4), dp(8))
-                layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+                layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                     setMargins(dp(3), 0, dp(3), 0)
                 }
                 background = GradientDrawable().apply {
@@ -698,10 +686,9 @@ class MerchantCockpitOverlayView(
 
         cockpitCard.addView(orderDeck)
 
-        // --- و. شريط التحكم السفلي (إخفاء من الشاشة + تجربة رنين الطلب) ---
         val footerRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            orientation = HORIZONTAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
 
         val btnHideStealth = TextView(context).apply {
@@ -710,7 +697,7 @@ class MerchantCockpitOverlayView(
             textSize = 11f
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(10), dp(8), dp(10))
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                 rightMargin = dp(4)
             }
             background = GradientDrawable().apply {
@@ -730,7 +717,7 @@ class MerchantCockpitOverlayView(
             textSize = 11f
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(10), dp(8), dp(10))
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                 leftMargin = dp(4)
             }
             background = GradientDrawable().apply {
@@ -747,6 +734,45 @@ class MerchantCockpitOverlayView(
 
         addView(cockpitCard)
         refreshStageHighlight()
+    }
+
+    private fun recalculateCountsAndFollowOrder(orderId: String, targetStage: String) {
+        val p = currentPayload ?: return
+        var n = 0
+        var prep = 0
+        var ship = 0
+        var deliv = 0
+        var cod = 0
+        for (o in p.orders) {
+            when (o.stage) {
+                "new" -> { n++; cod += o.total }
+                "preparing" -> { prep++; cod += o.total }
+                "shipping" -> { ship++; cod += o.total }
+                "delivered" -> { deliv++ }
+            }
+        }
+        p.newCount = n
+        p.preparingCount = prep
+        p.shippingCount = ship
+        p.deliveredCount = deliv
+        p.codInStreet = cod
+
+        val nf = NumberFormat.getIntegerInstance(Locale.US)
+        badgeText.text = n.toString()
+        badgeText.visibility = if (n > 0) View.VISIBLE else View.GONE
+        codValueText.text = "${nf.format(cod)} د.ج 💰"
+        tabNewCount.text = "$n ⏳"
+        tabPrepCount.text = "$prep 📦"
+        tabShipCount.text = "$ship 🚚"
+        tabDelivCount.text = "$deliv ✅"
+
+        selectedStage = targetStage
+        val filtered = getFilteredOrders()
+        val idx = filtered.indexOfFirst { it.id == orderId }
+        currentOrderIndex = if (idx >= 0) idx else 0
+
+        refreshStageHighlight()
+        refreshOrderCard()
     }
 
     private fun getFilteredOrders(): List<MerchantOrderItem> {
@@ -811,19 +837,32 @@ class MerchantCockpitOverlayView(
         when (ord.stage) {
             "new" -> {
                 primaryActionBtn.text = "⚡ قبول وتأكيد الطلب فوراً ⚡"
-                primaryActionBtn.visibility = View.VISIBLE
+                primaryActionBtn.background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(Color.parseColor("#6366F1"), Color.parseColor("#3B82F6"))
+                ).apply { cornerRadius = dp(14).toFloat() }
             }
             "preparing" -> {
                 primaryActionBtn.text = "🚚 تسليم لشركة التوصيل الآن"
-                primaryActionBtn.visibility = View.VISIBLE
+                primaryActionBtn.background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(Color.parseColor("#D97706"), Color.parseColor("#F59E0B"))
+                ).apply { cornerRadius = dp(14).toFloat() }
             }
             "shipping" -> {
                 primaryActionBtn.text = "✅ تأكيد التسليم وتحصيل المبلغ"
-                primaryActionBtn.visibility = View.VISIBLE
+                primaryActionBtn.background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(Color.parseColor("#059669"), Color.parseColor("#10B981"))
+                ).apply { cornerRadius = dp(14).toFloat() }
             }
             else -> {
                 primaryActionBtn.text = "✅ طلب مكتمل ومُسلم"
-                primaryActionBtn.alpha = 0.5f
+                primaryActionBtn.background = GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(Color.parseColor("#064E3B"))
+                }
+                primaryActionBtn.alpha = 0.7f
             }
         }
     }
@@ -834,8 +873,40 @@ class MerchantCockpitOverlayView(
         cockpitCard.visibility = if (show) View.VISIBLE else View.GONE
     }
 
+    fun focusNewOrdersTab() {
+        post {
+            selectedStage = "new"
+            currentOrderIndex = 0
+            refreshStageHighlight()
+            refreshOrderCard()
+        }
+    }
+
     fun updatePayload(payload: CockpitPayload) {
         post {
+            var n = 0
+            var prep = 0
+            var ship = 0
+            var deliv = 0
+            var cod = 0
+            for (o in payload.orders) {
+                val overrideStage = localStageOverrides[o.id]
+                if (overrideStage != null) {
+                    o.stage = overrideStage
+                }
+                when (o.stage) {
+                    "new" -> { n++; cod += o.total }
+                    "preparing" -> { prep++; cod += o.total }
+                    "shipping" -> { ship++; cod += o.total }
+                    "delivered" -> { deliv++ }
+                }
+            }
+            payload.newCount = n
+            payload.preparingCount = prep
+            payload.shippingCount = ship
+            payload.deliveredCount = deliv
+            payload.codInStreet = cod
+
             currentPayload = payload
             val nf = NumberFormat.getIntegerInstance(Locale.US)
 
@@ -860,7 +931,6 @@ class MerchantCockpitOverlayView(
             tabShipCount.text = "${payload.shippingCount} 🚚"
             tabDelivCount.text = "${payload.deliveredCount} ✅"
 
-            // بناء أزرار تبديل المتاجر
             storeTabsRow.removeAllViews()
             for (st in payload.stores) {
                 val isSelected = selectedStoreFilter == st.slug
@@ -870,7 +940,7 @@ class MerchantCockpitOverlayView(
                     textSize = 11f
                     typeface = Typeface.DEFAULT_BOLD
                     setPadding(dp(12), dp(5), dp(12), dp(5))
-                    layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                    layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
                         leftMargin = dp(6)
                     }
                     background = GradientDrawable().apply {
@@ -893,7 +963,7 @@ class MerchantCockpitOverlayView(
                 textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD
                 setPadding(dp(12), dp(5), dp(12), dp(5))
-                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
                     leftMargin = dp(6)
                 }
                 background = GradientDrawable().apply {

@@ -11,7 +11,7 @@ data class StoreSummary(
     val id: String,
     val name: String,
     val slug: String,
-    val isOpen: Boolean
+    var isOpen: Boolean
 )
 
 data class MerchantOrderItem(
@@ -23,22 +23,22 @@ data class MerchantOrderItem(
     val wilaya: String,
     val total: Int,
     val itemsSummary: String,
-    val status: String,
-    val stage: String,
+    var status: String,
+    var stage: String,
     val relativeTime: String
 )
 
 data class CockpitPayload(
     val storeName: String,
     val storeId: String,
-    val isStoreOpen: Boolean,
+    var isStoreOpen: Boolean,
     val gmvToday: Int,
     val ordersTodayCount: Int,
-    val codInStreet: Int,
-    val newCount: Int,
-    val preparingCount: Int,
-    val shippingCount: Int,
-    val deliveredCount: Int,
+    var codInStreet: Int,
+    var newCount: Int,
+    var preparingCount: Int,
+    var shippingCount: Int,
+    var deliveredCount: Int,
     val stores: List<StoreSummary>,
     val orders: List<MerchantOrderItem>
 )
@@ -93,7 +93,7 @@ object CockpitApiClient {
                             customerName = o.optString("customerName", "زبون"),
                             customerPhone = o.optString("customerPhone", ""),
                             carrier = o.optString("carrier", "شريحة"),
-                            wilaya = o.optString("wilaya", "الجزائر"),
+                            wilaya = o.optString("wilaya", "43 - ميلة"),
                             total = o.optInt("total", 0),
                             itemsSummary = o.optString("itemsSummary", ""),
                             status = o.optString("status", "pending"),
@@ -181,14 +181,20 @@ object CockpitApiClient {
         }
     }
 
-    fun notifyLocalCustomerCapsuleRefresh() {
+    fun notifyLocalCustomerCapsuleRefresh(nextStatus: String) {
+        val station = when (nextStatus) {
+            "confirmed", "preparing", "processing" -> 2
+            "out_for_delivery", "shipped", "shipping" -> 3
+            "delivered", "completed" -> 4
+            else -> 1
+        }
         var conn: HttpURLConnection? = null
         try {
-            val url = URL("http://127.0.0.1:49210/refresh?_cb=${System.currentTimeMillis()}")
+            val url = URL("http://127.0.0.1:49210/set-station?station=$station&status=$nextStatus&_cb=${System.currentTimeMillis()}")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 600
-                readTimeout = 600
+                connectTimeout = 800
+                readTimeout = 800
             }
             conn.responseCode
         } catch (_: Exception) {
