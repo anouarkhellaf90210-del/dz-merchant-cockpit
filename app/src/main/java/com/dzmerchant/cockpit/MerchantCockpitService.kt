@@ -195,7 +195,6 @@ class MerchantCockpitService : Service() {
         windowManager?.addView(cockpitView, params)
 
         val filter = IntentFilter().apply {
-            addAction(Intent.ACT_SCREEN_ON_SAFE())
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }
@@ -204,8 +203,6 @@ class MerchantCockpitService : Service() {
         startLocalWakeupServer()
         handler.post(syncRunnable)
     }
-
-    private fun Intent.Companion.ACT_SCREEN_ON_SAFE(): String = Intent.ACTION_SCREEN_ON
 
     private fun startLocalWakeupServer() {
         Thread {
@@ -217,7 +214,7 @@ class MerchantCockpitService : Service() {
                     Thread {
                         try {
                             client.soTimeout = 1500
-                            val reader = BufferedReader(InputStreamReader(client.getInputStream()))
+                            val reader = BufferedReader(InputStreamReader(client.getInputStream(), Charsets.UTF_8))
                             val reqLine = reader.readLine() ?: ""
                             var line: String? = reader.readLine()
                             while (!line.isNullOrEmpty()) {
@@ -232,7 +229,7 @@ class MerchantCockpitService : Service() {
                             val resp = "HTTP/1.1 200 OK\r\n" +
                                 "Content-Type: application/json\r\n" +
                                 "Access-Control-Allow-Origin: *\r\n" +
-                                "Content-Length: ${body.length}\r\n" +
+                                "Content-Length: " + body.toByteArray(Charsets.UTF_8).size + "\r\n" +
                                 "Connection: close\r\n\r\n" + body
                             out.write(resp.toByteArray(Charsets.UTF_8))
                             out.flush()
