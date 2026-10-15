@@ -7,7 +7,7 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class StoreItem(
+data class StoreSummary(
     val id: String,
     val name: String,
     val slug: String,
@@ -17,24 +17,21 @@ data class StoreItem(
 data class MerchantOrderItem(
     val id: String,
     val ref: String,
-    val status: String,
-    val stage: String,
     val customerName: String,
     val customerPhone: String,
     val carrier: String,
     val wilaya: String,
     val total: Int,
     val itemsSummary: String,
-    val relativeTime: String,
-    val trackingToken: String
+    val status: String,
+    val stage: String,
+    val relativeTime: String
 )
 
 data class CockpitPayload(
-    val storeId: String,
     val storeName: String,
-    val storeSlug: String,
+    val storeId: String,
     val isStoreOpen: Boolean,
-    val stores: List<StoreItem>,
     val gmvToday: Int,
     val ordersTodayCount: Int,
     val codInStreet: Int,
@@ -42,132 +39,161 @@ data class CockpitPayload(
     val preparingCount: Int,
     val shippingCount: Int,
     val deliveredCount: Int,
+    val stores: List<StoreSummary>,
     val orders: List<MerchantOrderItem>
 )
 
 object CockpitApiClient {
-    private const val BASE_URL = "https://my-private-store-app.vercel.app"
+    private const val BASE_URL = "https://my-private-store-app.vercel.app/api/merchant/cockpit"
 
-    fun fetchCockpit(storeFilter: String = "all"): CockpitPayload? {
+    fun fetchCockpit(storeSlug: String = "all"): CockpitPayload? {
+        var conn: HttpURLConnection? = null
         return try {
-            val endpoint = "$BASE_URL/api/merchant/cockpit?store=$storeFilter&_cb=${System.currentTimeMillis()}"
-            val conn = URL(endpoint).openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
+            val url = URL("$BASE_URL?store=$storeSlug&_cb=${System.currentTimeMillis()}")
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 8000
+                readTimeout = 8000
+                useCaches = false
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Cache-Control", "no-cache")
+            }
+            if (conn.responseCode != 200) return null
 
-            if (conn.responseCode != HttpURLConnection.HTTP_OK) return null
-
-            val reader = BufferedReader(InputStreamReader(conn.inputStream))
+            val reader = BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8))
             val raw = reader.readText()
             reader.close()
 
-            val root = JSONObject(raw)
-            if (!root.optBoolean("ok", false)) return null
-
-            val activeStore = root.optJSONObject("activeStore") ?: JSONObject()
-            val storesArr = root.optJSONArray("stores")
-            val storesList = mutableListOf<StoreItem>()
+            val json = JSONObject(raw)
+            val storesArr = json.optJSONArray("stores")
+            val storesList = mutableListOf<StoreSummary>()
             if (storesArr != null) {
                 for (i in 0 until storesArr.length()) {
                     val s = storesArr.getJSONObject(i)
                     storesList.add(
-                        StoreItem(
-                            id = s.optString("id"),
+                        StoreSummary(
+                            id = s.optString("id", ""),
                             name = s.optString("name", "متجر"),
-                            slug = s.optString("slug"),
+                            slug = s.optString("slug", "all"),
                             isOpen = s.optBoolean("isOpen", true)
                         )
                     )
                 }
             }
 
-            val telemetry = root.optJSONObject("telemetry") ?: JSONObject()
-            val counts = telemetry.optJSONObject("counts") ?: JSONObject()
-
-            val ordersArr = root.optJSONArray("orders")
+            val ordersArr = json.optJSONArray("orders")
             val ordersList = mutableListOf<MerchantOrderItem>()
             if (ordersArr != null) {
                 for (i in 0 until ordersArr.length()) {
                     val o = ordersArr.getJSONObject(i)
                     ordersList.add(
                         MerchantOrderItem(
-                            id = o.optString("id"),
+                            id = o.optString("id", ""),
                             ref = o.optString("ref", "#---"),
-                            status = o.optString("status", "new"),
-                            stage = o.optString("stage", "new"),
                             customerName = o.optString("customerName", "زبون"),
                             customerPhone = o.optString("customerPhone", ""),
-                            carrier = o.optString("carrier", "الجزائر"),
+                            carrier = o.optString("carrier", "شريحة"),
                             wilaya = o.optString("wilaya", "الجزائر"),
                             total = o.optInt("total", 0),
-                            itemsSummary = o.optString("itemsSummary", "طلبية ×1"),
-                            relativeTime = o.optString("relativeTime", "الآن"),
-                            trackingToken = o.optString("trackingToken", "")
+                            itemsSummary = o.optString("itemsSummary", ""),
+                            status = o.optString("status", "pending"),
+                            stage = o.optString("stage", "new"),
+                            relativeTime = o.optString("relativeTime", "الآن")
                         )
                     )
                 }
             }
 
             CockpitPayload(
-                storeId = activeStore.optString("id"),
-                storeName = activeStore.optString("name", "Elegance"),
-                storeSlug = activeStore.optString("slug", "dzball"),
-                isStoreOpen = activeStore.optBoolean("isOpen", true),
+                storeName = json.optString("storeName", "Elegance"),
+                storeId = json.optString("storeId", ""),
+                isStoreOpen = json.optBoolean("isStoreOpen", true),
+                gmvToday = json.optInt("gmvToday", 0),
+                ordersTodayCount = json.optInt("ordersTodayCount", 0),
+                codInStreet = json.optInt("codInStreet", 0),
+                newCount = json.optInt("newCount", 0),
+                preparingCount = json.optInt("preparingCount", 0),
+                shippingCount = json.optInt("shippingCount", 0),
+                deliveredCount = json.optInt("deliveredCount", 0),
                 stores = storesList,
-                gmvToday = telemetry.optInt("gmvToday", 0),
-                ordersTodayCount = telemetry.optInt("ordersTodayCount", 0),
-                codInStreet = telemetry.optInt("codInStreet", 0),
-                newCount = counts.optInt("new", 0),
-                preparingCount = counts.optInt("preparing", 0),
-                shippingCount = counts.optInt("shipping", 0),
-                deliveredCount = counts.optInt("delivered", 0),
                 orders = ordersList
             )
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
+        } finally {
+            conn?.disconnect()
         }
     }
 
-    fun updateOrderStatus(orderId: String, newStatus: String): Boolean {
+    fun updateOrderStatus(orderId: String, nextStatus: String): Boolean {
+        var conn: HttpURLConnection? = null
         return try {
-            val conn = URL("$BASE_URL/api/merchant/cockpit").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-            val payload = JSONObject().apply {
+            val url = URL(BASE_URL)
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 8000
+                readTimeout = 8000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            }
+            val body = JSONObject().apply {
                 put("action", "update_order_status")
                 put("orderId", orderId)
-                put("newStatus", newStatus)
+                put("status", nextStatus)
             }
-            val writer = OutputStreamWriter(conn.outputStream)
-            writer.write(payload.toString())
+            val writer = OutputStreamWriter(conn.outputStream, Charsets.UTF_8)
+            writer.write(body.toString())
             writer.flush()
             writer.close()
-            conn.responseCode == HttpURLConnection.HTTP_OK
-        } catch (e: Exception) {
+            conn.responseCode in 200..299
+        } catch (_: Exception) {
             false
+        } finally {
+            conn?.disconnect()
         }
     }
 
     fun toggleStoreStatus(storeId: String, isOpen: Boolean): Boolean {
+        var conn: HttpURLConnection? = null
         return try {
-            val conn = URL("$BASE_URL/api/merchant/cockpit").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-            val payload = JSONObject().apply {
-                put("action", "toggle_store_status")
+            val url = URL(BASE_URL)
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 8000
+                readTimeout = 8000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            }
+            val body = JSONObject().apply {
+                put("action", "toggle_store")
                 put("storeId", storeId)
                 put("isOpen", isOpen)
             }
-            val writer = OutputStreamWriter(conn.outputStream)
-            writer.write(payload.toString())
+            val writer = OutputStreamWriter(conn.outputStream, Charsets.UTF_8)
+            writer.write(body.toString())
             writer.flush()
             writer.close()
-            conn.responseCode == HttpURLConnection.HTTP_OK
-        } catch (e: Exception) {
+            conn.responseCode in 200..299
+        } catch (_: Exception) {
             false
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    fun notifyLocalCustomerCapsuleRefresh() {
+        var conn: HttpURLConnection? = null
+        try {
+            val url = URL("http://127.0.0.1:49210/refresh?_cb=${System.currentTimeMillis()}")
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 600
+                readTimeout = 600
+            }
+            conn.responseCode
+        } catch (_: Exception) {
+        } finally {
+            conn?.disconnect()
         }
     }
 }
