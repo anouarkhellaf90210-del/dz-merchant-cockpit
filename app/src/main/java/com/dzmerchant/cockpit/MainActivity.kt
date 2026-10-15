@@ -21,9 +21,11 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         pendingStore = intent?.data?.getQueryParameter("store") ?: "all"
+        val forceOpen = intent?.data?.getQueryParameter("event") == "new_order" ||
+            intent?.data?.getQueryParameter("open") == "1"
 
         if (checkOverlayPermission()) {
-            startCockpitService(pendingStore)
+            startCockpitService(pendingStore, forceOpen = forceOpen)
             finish()
             return
         }
@@ -86,7 +88,7 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == OVERLAY_REQ_CODE) {
             if (checkOverlayPermission()) {
-                startCockpitService(pendingStore)
+                startCockpitService(pendingStore, forceOpen = true)
                 finish()
             } else {
                 Toast.makeText(this, "يلزم تفعيل الإذن لتشغيل كبسولة التاجر", Toast.LENGTH_SHORT).show()
@@ -94,9 +96,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startCockpitService(store: String?) {
+    private fun startCockpitService(store: String?, forceOpen: Boolean = false) {
         val intent = Intent(this, MerchantCockpitService::class.java).apply {
             putExtra("store", store ?: "all")
+            putExtra("force_open", forceOpen)
         }
         startService(intent)
     }

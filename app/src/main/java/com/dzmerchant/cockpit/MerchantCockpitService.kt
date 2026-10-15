@@ -30,11 +30,11 @@ class MerchantCockpitService : Service() {
 
     private var windowManager: WindowManager? = null
     private var cockpitView: MerchantCockpitOverlayView? = null
+    private var windowParams: WindowManager.LayoutParams? = null
     private var storeFilter: String = "all"
     private val handler = Handler(Looper.getMainLooper())
     private var isStealthHidden = false
-    private val seenOrderIds = mutableSetOf<String>()
-    private var isFirstSync = true
+    private var lastKnownTopOrderId: String = ""
     private var loopbackServer: ServerSocket? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var isServiceAlive = true
@@ -52,9 +52,15 @@ class MerchantCockpitService : Service() {
         intent?.getStringExtra("store")?.let {
             if (it.isNotBlank()) storeFilter = it
         }
-        isStealthHidden = false
-        cockpitView?.visibility = View.VISIBLE
-        triggerSync(forceOpen = false)
+        val forceOpen = intent?.getBooleanExtra("force_open", false) ?: false
+        if (forceOpen) {
+            handler.post { wakeUpScreenAndPopup() }
+        } else {
+            isStealthHidden = false
+            cockpitView?.visibility = View.VISIBLE
+            windowParams?.let { windowManager?.updateViewLayout(cockpitView, it) }
+        }
+        triggerSync(forceOpen = forceOpen)
         return START_STICKY
     }
 
@@ -99,6 +105,7 @@ class MerchantCockpitService : Service() {
             x = defaultRightX
             y = 140
         }
+        windowParams = params
 
         cockpitView = MerchantCockpitOverlayView(
             context = this,
@@ -106,6 +113,7 @@ class MerchantCockpitService : Service() {
             onHideStealth = {
                 isStealthHidden = true
                 cockpitView?.visibility = View.GONE
+                windowParams?.let { windowManager?.updateViewLayout(cockpitView, it) }
                 Toast.makeText(
                     this,
                     "تم إخفاء كبسولة التاجر 🙈 • ستنبثق تلقائياً كالمسنجر فور وصول طلبية جديدة!",
@@ -115,6 +123,7 @@ class MerchantCockpitService : Service() {
             onCloseService = {
                 isStealthHidden = true
                 cockpitView?.visibility = View.GONE
+                windowParams?.let { windowManager?.updateViewLayout(cockpitView, it) }
             },
             onOrderAction = { orderId, nextStatus ->
                 playOrderArrivalChime()
@@ -198,6 +207,7 @@ class MerchantCockpitService : Service() {
 
         isStealthHidden = false
         cockpitView?.visibility = View.VISIBLE
+        windowParams?.let { windowManager?.updateViewLayout(cockpitView, it) }
         cockpitView?.focusNewOrdersTab()
         cockpitView?.toggleCockpit(true)
         playOrderArrivalChime()
@@ -239,6 +249,7 @@ class MerchantCockpitService : Service() {
                                 "Access-Control-Allow-Origin: *\r\n" +
                                 "Content-Length: " + body.toByteArray(Charsets.UTF_8).size + "\r\n" +
                                 "Connection: close\r\n\r\n" + body
+
                             out.write(resp.toByteArray(Charsets.UTF_8))
                             out.flush()
                         } catch (_: Exception) {
@@ -275,22 +286,20 @@ class MerchantCockpitService : Service() {
         Thread {
             val payload = CockpitApiClient.fetchCockpit(storeFilter)
             if (payload != null) {
-                var discoveredNewOrder = false
-                for (o in payload.orders) {
-                    if (o.stage == "new" && !seenOrderIds.contains(o.id)) {
-                        if (!isFirstSync) {
-                            discoveredNewOrder = true
-                        }
-                        seenOrderIds.add(o.id)
-                    } else {
-                        seenOrderIds.add(o.id)
-                    }
+                val currentTopNewOrder = payload.orders.firstOrNull { it.stage == "new" }
+                val currentTopId = currentTopNewOrder?.id ?: ""
+
+                var hasNewIncomingOrder = false
+                if (lastKnownTopOrderId.isNotEmpty() && currentTopId.isNotEmpty() && currentTopId != lastKnownTopOrderId) {
+                    hasNewIncomingOrder = true
                 }
-                isFirstSync = false
+                if (currentTopId.isNotEmpty()) {
+                    lastKnownTopOrderId = currentTopId
+                }
 
                 cockpitView?.updatePayload(payload)
 
-                if (discoveredNewOrder || forceOpen) {
+                if (hasNewIncomingOrder || forceOpen) {
                     handler.post { wakeUpScreenAndPopup() }
                 }
             }
