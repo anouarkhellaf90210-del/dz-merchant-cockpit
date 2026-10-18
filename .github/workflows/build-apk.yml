@@ -24,19 +24,38 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Generate Wrapper & Build Debug APK
+      - name: Build Debug & Release APKs
         run: |
           gradle wrapper --gradle-version 8.2
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon || true
+          APK_SRC=$(find app/build/outputs/apk/release -name "*-release.apk" | head -n 1)
+          if [ -z "$APK_SRC" ]; then
+            APK_SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          fi
+          cp "$APK_SRC" DZ-Merchant-Cockpit.apk
+          cp "$APK_SRC" dz-merchant-cockpit.apk
+          cp "$APK_SRC" app-release.apk
 
-      - name: Publish Direct APK Release
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DZ-Merchant-Cockpit-v3
+          path: DZ-Merchant-Cockpit.apk
+
+      - name: Publish Latest GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.4
-          name: "DZ Merchant Cockpit v1.0.4"
+          tag_name: v3.0.0
+          name: "👑 كبسولة القيادة الفورية للتاجر v3.0.0"
+          body: "أحدث نسخة من كبسولة القيادة الفورية للتاجر (درج تأكيد وتعديل الطلبية المدمج + مقارنة المبيعات اليومية بالأسهم + تخصيص نغمة الرنين)"
           draft: false
           prerelease: false
-          files: app/build/outputs/apk/debug/*.apk
+          make_latest: true
+          files: |
+            DZ-Merchant-Cockpit.apk
+            dz-merchant-cockpit.apk
+            app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
