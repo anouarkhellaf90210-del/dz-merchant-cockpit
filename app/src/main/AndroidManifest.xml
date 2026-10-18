@@ -29,6 +29,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="dzmerchant" android:host="cockpit" />
+                <data android:scheme="dzmerchant" android:host="merchant" />
             </intent-filter>
         </activity>
 
