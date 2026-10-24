@@ -1,15 +1,18 @@
 package com.dzmerchant.cockpit
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Rational
 import android.view.Gravity
@@ -17,10 +20,27 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import java.io.File
+import java.io.FileInputStream
 
 class MainActivity : Activity() {
 
     private var pendingStore: String? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private var isWatchingOverlay = false
+
+    private val overlayWatcher = object : Runnable {
+        override fun run() {
+            if (!isWatchingOverlay) return
+            if (checkOverlayPermission()) {
+                isWatchingOverlay = false
+                startCockpitService(pendingStore, forceOpen = true)
+                finish()
+            } else {
+                handler.postDelayed(this, 600)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,10 +57,8 @@ class MainActivity : Activity() {
             } catch (_: Exception) {}
         }
 
-        // تشغيل خدمة كبسولة التاجر وجسر 49211 فوراً في جميع الحالات بدون قيود
-        startCockpitService(pendingStore, forceOpen = forceOpen)
-
         if (checkOverlayPermission()) {
+            startCockpitService(pendingStore, forceOpen = forceOpen)
             finish()
             return
         }
@@ -53,7 +71,7 @@ class MainActivity : Activity() {
         }
 
         val badge = TextView(this).apply {
-            text = "✅ رادار التاجر وجرس الطلبيات نشط الآن"
+            text = "✅ الإصدار الرسمي v3.2.0 • توثيق المتجر المباشر"
             textSize = 12f
             setTextColor(0xFF34D399.toInt())
             typeface = Typeface.DEFAULT_BOLD
@@ -76,15 +94,15 @@ class MainActivity : Activity() {
         }
 
         val desc = TextView(this).apply {
-            text = "اضغط الزر بالأسفل لتعويم كبسولة التاجر فوق الشاشة فوراً بنقرة واحدة واستقبال الطلبيات الحية بالصوت والاهتزاز."
+            text = "اضغط الزر الأول لتوثيق الكبسولة كمصدر متجر رسمي وفتح إذن الظهور فوق التطبيقات مباشرة دون الحاجة لإزالة القيود يدوياً."
             textSize = 13f
             setTextColor(0xFFD4D4D8.toInt())
             gravity = Gravity.CENTER
-            setPadding(0, 10, 0, 40)
+            setPadding(0, 10, 0, 36)
         }
 
-        val pipBtn = Button(this).apply {
-            text = "🚀 تعويم كبسولة التاجر بنقرة واحدة 👑"
+        val storeUnlockBtn = Button(this).apply {
+            text = "🛡️ تفعيل الكبسولة بصلاحية المتجر الرسمي 👑"
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(0xFF09090B.toInt())
             background = GradientDrawable().apply {
@@ -93,42 +111,32 @@ class MainActivity : Activity() {
             }
             setPadding(30, 30, 30, 30)
             setOnClickListener {
-                startCockpitService(pendingStore, forceOpen = true)
                 if (checkOverlayPermission()) {
+                    startCockpitService(pendingStore, forceOpen = true)
                     finish()
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    try {
-                        val params = PictureInPictureParams.Builder()
-                            .setAspectRatio(Rational(16, 10))
-                            .build()
-                        enterPictureInPictureMode(params)
-                    } catch (_: Exception) {
-                        moveTaskToBack(true)
-                    }
+                } else if (!isInstalledAsOfficialStoreSource()) {
+                    upgradeToOfficialStoreSource()
                 } else {
-                    moveTaskToBack(true)
+                    openOverlaySettings()
                 }
             }
         }
 
-        val classicBtn = Button(this).apply {
-            text = "✨ أو تفعيل الأيقونة الدائرية الكلاسيكية (اختياري)"
-            textSize = 11f
-            setTextColor(0xFFA1A1AA.toInt())
+        val pipBtn = Button(this).apply {
+            text = "🚀 أو تعويم نافذة التاجر المصغرة فوراً بدون إعدادات"
+            textSize = 12f
+            setTextColor(0xFFFFFFFF.toInt())
             background = GradientDrawable().apply {
                 setColor(0xFF18181B.toInt())
                 cornerRadius = 24f
-                setStroke(2, 0xFF27272A.toInt())
+                setStroke(2, 0xFFF59E0B.toInt())
             }
             setPadding(24, 24, 24, 24)
             setOnClickListener {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     try {
-                        startActivity(
-                            Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:$packageName")
-                            )
+                        enterPictureInPictureMode(
+                            PictureInPictureParams.Builder().setAspectRatio(Rational(16, 10)).build()
                         )
                     } catch (_: Exception) {}
                 }
@@ -138,19 +146,105 @@ class MainActivity : Activity() {
         layout.addView(badge)
         layout.addView(title)
         layout.addView(desc)
-        layout.addView(pipBtn)
+        layout.addView(storeUnlockBtn)
         layout.addView(TextView(this).apply { height = 24 })
-        layout.addView(classicBtn)
+        layout.addView(pipBtn)
 
         setContentView(layout)
     }
 
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (!checkOverlayPermission() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    override fun onResume() {
+        super.onResume()
+        if (checkOverlayPermission()) {
+            isWatchingOverlay = false
+            startCockpitService(pendingStore, forceOpen = true)
+            finish()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isWatchingOverlay = false
+        handler.removeCallbacks(overlayWatcher)
+    }
+
+    private fun isInstalledAsOfficialStoreSource(): Boolean {
+        if (Build.VERSION.SDK_INT < 33) return true
+        return try {
+            val info = packageManager.getInstallSourceInfo(packageName)
+            info.packageSource == PackageInstaller.PACKAGE_SOURCE_STORE
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun upgradeToOfficialStoreSource() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!packageManager.canRequestPackageInstalls()) {
+                try {
+                    val allowIntent = Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName")
+                    )
+                    Toast.makeText(
+                        this,
+                        "اضغط «سماح» مرة واحدة لتوثيق كبسولة التاجر كمصدر متجر رسمي وفتح الإذن مباشرة",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    startActivity(allowIntent)
+                    return
+                } catch (_: Exception) {}
+            }
+        }
+
+        Thread {
             try {
-                enterPictureInPictureMode(
-                    PictureInPictureParams.Builder().setAspectRatio(Rational(16, 10)).build()
+                val apkFile = File(applicationInfo.sourceDir)
+                val installer = packageManager.packageInstaller
+                val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+                params.setAppPackageName(packageName)
+                if (Build.VERSION.SDK_INT >= 33) {
+                    params.setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE)
+                }
+                if (Build.VERSION.SDK_INT >= 31) {
+                    params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                }
+
+                val sessionId = installer.createSession(params)
+                val session = installer.openSession(sessionId)
+                FileInputStream(apkFile).use { input ->
+                    session.openWrite("base.apk", 0, apkFile.length()).use { output ->
+                        input.copyTo(output)
+                        session.fsync(output)
+                    }
+                }
+
+                val callbackIntent = Intent(this, StoreSourceReceiver::class.java)
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val pendingIntent = PendingIntent.getBroadcast(this, sessionId, callbackIntent, flags)
+                session.commit(pendingIntent.intentSender)
+                session.close()
+            } catch (_: Exception) {
+                handler.post { openOverlaySettings() }
+            }
+        }.start()
+    }
+
+    private fun openOverlaySettings() {
+        isWatchingOverlay = true
+        handler.removeCallbacks(overlayWatcher)
+        handler.postDelayed(overlayWatcher, 600)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
                 )
             } catch (_: Exception) {}
         }
@@ -170,13 +264,7 @@ class MainActivity : Activity() {
             putExtra("force_open", forceOpen)
         }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-        } catch (_: Exception) {
-            try { startService(intent) } catch (_: Exception) {}
-        }
+            startService(intent)
+        } catch (_: Exception) {}
     }
 }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.dzmerchant.cockpit"
         minSdk = 26
         targetSdk = 34
-        versionCode = 30
-        versionName = "3.0.0"
+        versionCode = 8
+        versionName = "3.2.0"
     }
 
     buildTypes {
