@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -24,19 +25,30 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Generate Wrapper & Build Debug APK
+      - name: Build Debug & Release APKs
         run: |
           gradle wrapper --gradle-version 8.2
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug assembleRelease --no-daemon --stacktrace
+          mkdir -p release-out
+          cp app/build/outputs/apk/debug/app-debug.apk release-out/DZ-Merchant-Cockpit.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-out/app-debug.apk
 
-      - name: Publish Direct APK Release
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DZ-Merchant-Cockpit-APK
+          path: release-out/DZ-Merchant-Cockpit.apk
+
+      - name: Publish Latest GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.4
-          name: "DZ Merchant Cockpit v1.0.4"
+          tag_name: v3.6.0
+          name: "DZ Merchant Cockpit v3.6.0 (Original Golden Release)"
           draft: false
           prerelease: false
-          files: app/build/outputs/apk/debug/*.apk
+          files: |
+            release-out/DZ-Merchant-Cockpit.apk
+            release-out/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
