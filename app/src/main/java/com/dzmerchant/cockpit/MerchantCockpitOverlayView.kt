@@ -91,6 +91,7 @@ class MerchantCockpitOverlayView(
     private val itemsExpandHintBadge: TextView
     private val inlineConfirmationDrawer: LinearLayout
     private val primaryActionBtn: TextView
+    private var waybillBtnRef: TextView? = null
     private val btnDetailsToggle: TextView
 
     // لوحة تخصيص نغمة الرنين
@@ -949,22 +950,27 @@ class MerchantCockpitOverlayView(
 
         val btnWaybill = createQuickActionBtn("بوليصة 📋") {
             val ord = getCurrentOrder() ?: return@createQuickActionBtn
-            val waybill = "بوليصة شحن ${ord.ref}\nالزبون: ${ord.customerName}\nالهاتف: ${ord.customerPhone}\nالولاية: ${ord.wilaya} ${ord.commune}\nالسلع: ${ord.itemsSummary}\nالمبلغ المستحق (COD): ${ord.total} د.ج"
+            val isPickupOrder = ord.isPickup || ord.wilaya.contains("استلام") || ord.itemsSummary.contains("استلام")
+            val waybill = if (isPickupOrder) {
+                "بطاقة استلام من المحل ${ord.ref}\nالزبون: ${ord.customerName}\nالهاتف: ${ord.customerPhone}\nالسلع: ${ord.itemsSummary}\nالمبلغ المطلوب دفعه بالمحل: ${ord.total} د.ج\nنوع التسليم: استلام شخصي من المحل 🏪"
+            } else {
+                "بوليصة شحن ${ord.ref}\nالزبون: ${ord.customerName}\nالهاتف: ${ord.customerPhone}\nالولاية: ${ord.wilaya}\nالسلع: ${ord.itemsSummary}\nالمبلغ المستحق (COD): ${ord.total} د.ج"
+            }
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("Waybill", waybill))
-            Toast.makeText(context, if (ord.isPickup || ord.wilaya.contains("استلام")) "تم نسخ وصل الاستلام من المحل 🏪" else "تم نسخ بوليصة الشحن 📋", Toast.LENGTH_SHORT).show()
-        }
+            Toast.makeText(context, if (isPickupOrder) "تم نسخ بطاقة الاستلام من المحل 🏪" else "تم نسخ بوليصة الشحن 📋", Toast.LENGTH_SHORT).show()
+        }.also { waybillBtnRef = it }
 
         val btnWhatsapp = createQuickActionBtn("واتساب 💬", isGreen = true) {
             val ord = getCurrentOrder() ?: return@createQuickActionBtn
             val cleanPhone = ord.customerPhone.replace("\\s+".toRegex(), "").replace("^0".toRegex(), "213").replace("^\\+".toRegex(), "")
-            val isPickupOrder = ord.isPickup || ord.wilaya.contains("استلام")
+            val isPickupOrder = ord.isPickup || ord.wilaya.contains("استلام") || ord.itemsSummary.contains("استلام")
             val storeTitle = currentPayload?.storeName ?: "المتجر"
             val rawMsg = if (isPickupOrder) {
                 if (ord.stage == "shipping") {
-                    "السلام عليكم ${ord.customerName}، معك متجر $storeTitle. نعلمك أن طلبيتك رقم #${ord.ref} بقيمة ${ord.total} د.ج جاهزة الآن في المحل 🏪! تفضل بالحضور لاستلامها متى شئت 🤝"
+                    "السلام عليكم ${ord.customerName}، معك متجر $storeTitle. نعلمك أن طلبيتك رقم ${ord.ref} بقيمة ${ord.total} د.ج جاهزة الآن في المحل 🏪! تفضل بالحضور لاستلامها متى شئت 🤝"
                 } else {
-                    "السلام عليكم ${ord.customerName}، معك متجر $storeTitle بخصوص طلبيتك رقم #${ord.ref} بقيمة ${ord.total} د.ج (استلام شخصي من المحل 🏪). نبدأ بتجهيز سلعتك الآن؟"
+                    "السلام عليكم ${ord.customerName}، معك متجر $storeTitle بخصوص طلبيتك رقم ${ord.ref} بقيمة ${ord.total} د.ج (استلام شخصي من المحل 🏪). نبدأ بتجهيز سلعتك الآن؟"
                 }
             } else {
                 "مرحباً ${ord.customerName}، معك متجر $storeTitle بخصوص طلبيتك (${ord.itemsSummary}) بمبلغ ${ord.total} د.ج إلى ${ord.wilaya}. هل نؤكد إرسال الطرد اليوم؟"
@@ -1837,30 +1843,33 @@ class MerchantCockpitOverlayView(
 
         renderInlineConfirmationDrawer(ord)
 
+        val isPickupOrd = ord.isPickup || ord.wilaya.contains("استلام") || ord.itemsSummary.contains("استلام")
+        waybillBtnRef?.text = if (isPickupOrd) "بطاقة استلام 🏪" else "بوليصة 📋"
+
         when (ord.stage) {
             "new" -> {
-                primaryActionBtn.text = "⚡ قبول وتأكيد الطلب فوراً ⚡"
+                primaryActionBtn.text = if (isPickupOrd) "⚡ قبول وتجهيز الطلب بالمحل 🏪" else "⚡ قبول وتأكيد الطلب فوراً ⚡"
                 primaryActionBtn.background = GradientDrawable(
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(Color.parseColor("#6366F1"), Color.parseColor("#3B82F6"))
                 ).apply { cornerRadius = dp(14).toFloat() }
             }
             "preparing" -> {
-                    primaryActionBtn.text = if (ord.isPickup) "🏪 جاهزة بالمحل بانتظار المستلم 🔔" else "🚚 تسليم لشركة التوصيل الآن"
+                primaryActionBtn.text = if (isPickupOrd) "🏪 جاهزة بالمحل بانتظار المستلم 🔔" else "🚚 تسليم لشركة التوصيل الآن"
                 primaryActionBtn.background = GradientDrawable(
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(Color.parseColor("#D97706"), Color.parseColor("#F59E0B"))
                 ).apply { cornerRadius = dp(14).toFloat() }
             }
             "shipping" -> {
-                    primaryActionBtn.text = if (ord.isPickup) "🤝 تأكيد التسليم والدفع بالمحل" else "✅ تأكيد التسليم وتحصيل المبلغ"
+                primaryActionBtn.text = if (isPickupOrd) "🤝 تم التسليم والدفع بالمحل" else "✅ تأكيد التسليم وتحصيل المبلغ"
                 primaryActionBtn.background = GradientDrawable(
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(Color.parseColor("#059669"), Color.parseColor("#10B981"))
                 ).apply { cornerRadius = dp(14).toFloat() }
             }
             else -> {
-                primaryActionBtn.text = "✅ طلب مكتمل ومُسلم"
+                primaryActionBtn.text = if (isPickupOrd) "✅ تم الاستلام والدفع بالمحل" else "✅ طلب مكتمل ومُسلم"
                 primaryActionBtn.background = GradientDrawable().apply {
                     cornerRadius = dp(14).toFloat()
                     setColor(Color.parseColor("#064E3B"))

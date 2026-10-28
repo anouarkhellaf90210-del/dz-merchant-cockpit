@@ -45,9 +45,9 @@ data class MerchantOrderItem(
     var status: String,
     var stage: String,
     val relativeTime: String,
-    val isPickup: Boolean = false,
     val createdAtMs: Long,
-    val items: MutableList<OrderDetailItem>
+    val items: MutableList<OrderDetailItem>,
+    val isPickup: Boolean = wilaya.contains("استلام") || wilaya.contains("المحل") || wilaya.contains("PICKUP") || itemsSummary.contains("استلام")
 )
 
 data class CockpitPayload(
