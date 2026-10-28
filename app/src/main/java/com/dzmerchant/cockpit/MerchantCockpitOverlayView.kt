@@ -952,13 +952,24 @@ class MerchantCockpitOverlayView(
             val waybill = "بوليصة شحن ${ord.ref}\nالزبون: ${ord.customerName}\nالهاتف: ${ord.customerPhone}\nالولاية: ${ord.wilaya} ${ord.commune}\nالسلع: ${ord.itemsSummary}\nالمبلغ المستحق (COD): ${ord.total} د.ج"
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("Waybill", waybill))
-            Toast.makeText(context, "تم نسخ بوليصة الشحن 📋", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, if (ord.isPickup || ord.wilaya.contains("استلام")) "تم نسخ وصل الاستلام من المحل 🏪" else "تم نسخ بوليصة الشحن 📋", Toast.LENGTH_SHORT).show()
         }
 
         val btnWhatsapp = createQuickActionBtn("واتساب 💬", isGreen = true) {
             val ord = getCurrentOrder() ?: return@createQuickActionBtn
             val cleanPhone = ord.customerPhone.replace("\\s+".toRegex(), "").replace("^0".toRegex(), "213").replace("^\\+".toRegex(), "")
-            val msg = Uri.encode("مرحباً ${ord.customerName}، معك متجر ${currentPayload?.storeName ?: "Elegance"} بخصوص طلبيتك (${ord.itemsSummary}) بمبلغ ${ord.total} د.ج إلى ${ord.wilaya}. هل نؤكد إرسال الطرد اليوم؟")
+            val isPickupOrder = ord.isPickup || ord.wilaya.contains("استلام")
+            val storeTitle = currentPayload?.storeName ?: "المتجر"
+            val rawMsg = if (isPickupOrder) {
+                if (ord.stage == "shipping") {
+                    "السلام عليكم ${ord.customerName}، معك متجر $storeTitle. نعلمك أن طلبيتك رقم #${ord.ref} بقيمة ${ord.total} د.ج جاهزة الآن في المحل 🏪! تفضل بالحضور لاستلامها متى شئت 🤝"
+                } else {
+                    "السلام عليكم ${ord.customerName}، معك متجر $storeTitle بخصوص طلبيتك رقم #${ord.ref} بقيمة ${ord.total} د.ج (استلام شخصي من المحل 🏪). نبدأ بتجهيز سلعتك الآن؟"
+                }
+            } else {
+                "مرحباً ${ord.customerName}، معك متجر $storeTitle بخصوص طلبيتك (${ord.itemsSummary}) بمبلغ ${ord.total} د.ج إلى ${ord.wilaya}. هل نؤكد إرسال الطرد اليوم؟"
+            }
+            val msg = Uri.encode(rawMsg)
             val waIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$cleanPhone?text=$msg")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }

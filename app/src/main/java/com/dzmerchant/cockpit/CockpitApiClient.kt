@@ -45,6 +45,7 @@ data class MerchantOrderItem(
     var status: String,
     var stage: String,
     val relativeTime: String,
+    val isPickup: Boolean = false,
     val createdAtMs: Long,
     val items: MutableList<OrderDetailItem>
 )
