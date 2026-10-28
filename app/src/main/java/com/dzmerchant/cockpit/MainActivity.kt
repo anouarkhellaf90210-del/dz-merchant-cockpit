@@ -22,6 +22,13 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33) {
+            try {
+                if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 5433)
+                }
+            } catch (_: Exception) {}
+        }
 
         if (intent?.action == "ACTION_PICK_RINGTONE") {
             openPhoneRingtonePicker()
@@ -155,6 +162,14 @@ class MainActivity : Activity() {
             putExtra("store", store ?: "all")
             putExtra("force_open", forceOpen)
         }
-        startService(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                startForegroundService(intent)
+            } catch (_: Exception) {
+                startService(intent)
+            }
+        } else {
+            startService(intent)
+        }
     }
 }

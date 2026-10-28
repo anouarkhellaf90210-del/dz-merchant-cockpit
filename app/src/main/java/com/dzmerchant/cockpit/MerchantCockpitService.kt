@@ -48,6 +48,8 @@ class MerchantCockpitService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var activeCustomRingtone: Ringtone? = null
     @Volatile private var isServiceAlive = true
+    private var bgScheduler: java.util.concurrent.ScheduledExecutorService? = null
+    private var screenStateReceiver: android.content.BroadcastReceiver? = null
 
     private val syncRunnable = object : Runnable {
         override fun run() {
@@ -56,9 +58,146 @@ class MerchantCockpitService : Service() {
         }
     }
 
+    
+    private fun ensureForegroundGuardian() {
+        try {
+            val channelId = "dz_merchant_cockpit_guardian"
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+                if (nm.getNotificationChannel(channelId) == null) {
+                    val chan = android.app.NotificationChannel(
+                        channelId,
+                        "حارس كبسولة قيادة التاجر",
+                        android.app.NotificationManager.IMPORTANCE_LOW
+                    ).apply {
+                        description = "يبقي كبسولة التاجر متصلة في الخلفية لرصد الطلبيات الجديدة حتى والشاشة مغلقة"
+                        setShowBadge(false)
+                        enableVibration(false)
+                        setSound(null, null)
+                    }
+                    nm.createNotificationChannel(chan)
+                }
+            }
+
+            val openIntent = Intent(this, MainActivity::class.java).apply {
+                data = android.net.Uri.parse("dzmerchant://cockpit?open=1")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingOpen = android.app.PendingIntent.getActivity(this, 101, openIntent, piFlags)
+
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                android.app.Notification.Builder(this, channelId)
+            } else {
+                @Suppress("DEPRECATION")
+                android.app.Notification.Builder(this)
+            }
+
+            val notification = builder
+                .setContentTitle("👑 كبسولة قيادة التاجر نشطة بالخلفية")
+                .setContentText("ترصد الطلبيات الحية 24/7 وتوقظ الهاتف فور وصول أي طلبية")
+                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setContentIntent(pendingOpen)
+                .setOngoing(true)
+                .build()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    49211,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(49211, notification)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun fireUrgentOrderNotification(ord: MerchantOrderItem?, storeTitle: String) {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager ?: return
+            val alertChannelId = "dz_merchant_urgent_order_alerts_v2"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (nm.getNotificationChannel(alertChannelId) == null) {
+                    val chan = android.app.NotificationChannel(
+                        alertChannelId,
+                        "تنبيهات الطلبيات الجديدة الفورية 👑",
+                        android.app.NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = "إشعارات صوتية وبصرية فورية فوق شاشة القفل عند وصول طلبية جديدة"
+                        enableLights(true)
+                        enableVibration(true)
+                        vibrationPattern = longArrayOf(0, 300, 150, 300, 150, 500)
+                        lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                    }
+                    nm.createNotificationChannel(chan)
+                }
+            }
+
+            val openIntent = Intent(this, MainActivity::class.java).apply {
+                data = android.net.Uri.parse("dzmerchant://cockpit?event=new_order&open=1")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                this,
+                (System.currentTimeMillis() % 10000).toInt(),
+                openIntent,
+                piFlags
+            )
+
+            val cleanStore = storeTitle.ifBlank { "المتجر" }
+            val titleText = if (ord != null) {
+                "🛍️ طلبية جديدة في " + cleanStore + " • " + ord.total + " د.ج"
+            } else {
+                "👑 طلبية جديدة وصلت " + cleanStore + " الآن!"
+            }
+
+            val bodyText = if (ord != null) {
+                "👤 " + ord.customerName + " | 📍 " + ord.wilaya + " | 📦 " + ord.itemsSummary
+            } else {
+                "اضغط هنا لفتح كبسولة التاجر وتأكيد الطلبية فوراً"
+            }
+
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                android.app.Notification.Builder(this, alertChannelId)
+            } else {
+                @Suppress("DEPRECATION")
+                android.app.Notification.Builder(this)
+                    .setPriority(android.app.Notification.PRIORITY_MAX)
+                    .setDefaults(android.app.Notification.DEFAULT_ALL)
+            }
+
+            builder.setContentTitle(titleText)
+                .setContentText(bodyText)
+                .setStyle(android.app.Notification.BigTextStyle().bigText(bodyText))
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .setFullScreenIntent(pendingIntent, true)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                builder.setCategory(android.app.Notification.CATEGORY_CALL)
+                builder.setVisibility(android.app.Notification.VISIBILITY_PUBLIC)
+            }
+
+            nm.notify((System.currentTimeMillis() % 100000).toInt() + 50000, builder.build())
+        } catch (_: Exception) {}
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ensureForegroundGuardian()
         intent?.getStringExtra("store")?.let {
             if (it.isNotBlank()) storeFilter = it
         }
@@ -77,11 +216,12 @@ class MerchantCockpitService : Service() {
     override fun onCreate() {
         super.onCreate()
         isServiceAlive = true
+        ensureForegroundGuardian()
 
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dzmerchant:CockpitWatchdog")
-            wakeLock?.acquire()
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dzmerchant:CockpitWatchdog")?.apply { setReferenceCounted(false) }
+            if (wakeLock?.isHeld == false) wakeLock?.acquire()
         } catch (_: Exception) {}
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -240,6 +380,31 @@ class MerchantCockpitService : Service() {
 
         startLocalWakeupServer()
         handler.post(syncRunnable)
+
+        bgScheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
+        bgScheduler?.scheduleAtFixedRate({
+            try {
+                if (isServiceAlive) {
+                    triggerSync(forceOpen = false)
+                }
+            } catch (_: Exception) {}
+        }, 3, 4, java.util.concurrent.TimeUnit.SECONDS)
+
+        try {
+            screenStateReceiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    if (intent?.action == Intent.ACTION_SCREEN_ON || intent?.action == Intent.ACTION_USER_PRESENT) {
+                        triggerSync(forceOpen = false)
+                    }
+                }
+            }
+            val filter = android.content.IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_USER_PRESENT)
+            }
+            registerReceiver(screenStateReceiver, filter)
+        } catch (_: Exception) {}
     }
 
     private fun setWindowFocusable(focusable: Boolean) {
@@ -310,7 +475,7 @@ class MerchantCockpitService : Service() {
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
                 "dzmerchant:OrderAlertWakeup"
             )
-            screenLock.acquire(5000)
+            screenLock.acquire(10000)
         } catch (_: Exception) {}
 
         exitStealthOnMainThread(openCard = true)
@@ -497,7 +662,13 @@ class MerchantCockpitService : Service() {
                 cockpitView?.updatePayload(payload)
 
                 if (hasNewIncomingOrder || forceOpen) {
-                    handler.post { wakeUpScreenAndPopup() }
+                    val alertOrd = currentTopNewOrder ?: payload.orders.firstOrNull()
+                    handler.post {
+                        if (hasNewIncomingOrder) {
+                            fireUrgentOrderNotification(alertOrd, payload.storeName)
+                        }
+                        wakeUpScreenAndPopup()
+                    }
                 }
             }
         }.start()
@@ -506,6 +677,8 @@ class MerchantCockpitService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isServiceAlive = false
+        try { bgScheduler?.shutdownNow() } catch (_: Exception) {}
+        try { if (screenStateReceiver != null) unregisterReceiver(screenStateReceiver) } catch (_: Exception) {}
         handler.removeCallbacks(syncRunnable)
         try { activeCustomRingtone?.stop() } catch (_: Exception) {}
         try { wakeLock?.release() } catch (_: Exception) {}
