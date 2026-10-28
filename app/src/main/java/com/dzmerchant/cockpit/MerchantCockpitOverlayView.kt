@@ -1835,14 +1835,14 @@ class MerchantCockpitOverlayView(
                 ).apply { cornerRadius = dp(14).toFloat() }
             }
             "preparing" -> {
-                primaryActionBtn.text = "🚚 تسليم لشركة التوصيل الآن"
+                    primaryActionBtn.text = if (ord.isPickup) "🏪 جاهزة بالمحل بانتظار المستلم 🔔" else "🚚 تسليم لشركة التوصيل الآن"
                 primaryActionBtn.background = GradientDrawable(
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(Color.parseColor("#D97706"), Color.parseColor("#F59E0B"))
                 ).apply { cornerRadius = dp(14).toFloat() }
             }
             "shipping" -> {
-                primaryActionBtn.text = "✅ تأكيد التسليم وتحصيل المبلغ"
+                    primaryActionBtn.text = if (ord.isPickup) "🤝 تأكيد التسليم والدفع بالمحل" else "✅ تأكيد التسليم وتحصيل المبلغ"
                 primaryActionBtn.background = GradientDrawable(
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(Color.parseColor("#059669"), Color.parseColor("#10B981"))
