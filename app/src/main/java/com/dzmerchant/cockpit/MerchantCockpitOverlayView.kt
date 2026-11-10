@@ -1604,6 +1604,9 @@ class MerchantCockpitOverlayView(
     }
 
     private fun refreshAllAnalyticsAndCards() {
+        post { try { syncDynamicPickupStageIcons(this) } catch (_: Exception) {} }
+        postDelayed({ try { syncDynamicPickupStageIcons(this) } catch (_: Exception) {} }, 60)
+
         val p = currentPayload ?: return
         val nf = NumberFormat.getIntegerInstance(Locale.US)
 
@@ -1962,13 +1965,22 @@ class MerchantCockpitOverlayView(
                 setOnClickListener {
                     selectedStoreFilter = "all"
                     onSelectStore("all")
-            
+                }
+            }
+            storeTabsRow.addView(allPill)
+
+            refreshAllAnalyticsAndCards()
+        }
+    }
+
     private fun syncDynamicPickupStageIcons(root: android.view.View) {
         val allTextViews = mutableListOf<android.widget.TextView>()
+        val allViewGroups = mutableListOf<android.view.ViewGroup>()
         fun collect(v: android.view.View) {
             if (v is android.widget.TextView) {
                 allTextViews.add(v)
             } else if (v is android.view.ViewGroup) {
+                allViewGroups.add(v)
                 for (i in 0 until v.childCount) {
                     collect(v.getChildAt(i))
                 }
@@ -1976,6 +1988,7 @@ class MerchantCockpitOverlayView(
         }
         collect(root)
 
+        // Check if the currently displayed order card is a Store Pickup order
         var isPickupActive = false
         for (tv in allTextViews) {
             if (tv.visibility == android.view.View.VISIBLE) {
@@ -1983,11 +1996,14 @@ class MerchantCockpitOverlayView(
                 if (
                     t.contains("استلام شخصي") ||
                     t.contains("استلام بالمحل") ||
+                    t.contains("استلام من المحل") ||
+                    t.contains("استلام مباشر من المحل") ||
                     t.contains("استلام وسيط") ||
                     t.contains("بطاقة استلام") ||
                     t.contains("بانتظار المستلم") ||
                     t.contains("والدفع بالمحل") ||
-                    t.contains("تجهيز الطلب بالمحل")
+                    t.contains("تجهيز الطلب بالمحل") ||
+                    t.contains("جاهزة للاستلام بالمحل")
                 ) {
                     isPickupActive = true
                     break
@@ -1995,43 +2011,46 @@ class MerchantCockpitOverlayView(
             }
         }
 
-        for (tv in allTextViews) {
-            val raw = tv.text?.toString() ?: ""
-            val trimmed = raw.trim()
-            if (isPickupActive) {
-                when (trimmed) {
-                    "جديد" -> if (raw != "طلب بالمحل") tv.text = "طلب بالمحل"
-                    "تجهيز" -> if (raw != "تجهيز بالمحل") tv.text = "تجهيز بالمحل"
-                    "في الطريق" -> if (raw != "جاهز بالمحل") tv.text = "جاهز بالمحل"
-                    "تم التسليم" -> if (raw != "تم الاستلام") tv.text = "تم الاستلام"
-                    "🚚" -> tv.text = "🏪"
-                    "✅" -> tv.text = "🤝"
-                    else -> {
-                        if (raw.contains("🚚") && raw.any { it.isDigit() }) {
-                            tv.text = raw.replace("🚚", "🏪")
-                        } else if (raw.contains("✅") && raw.any { it.isDigit() } && !raw.contains("تم")) {
-                            tv.text = raw.replace("✅", "🤝")
-                        }
-                    }
-                }
-            } else {
-                when (trimmed) {
-                    "طلب بالمحل" -> if (raw != "جديد") tv.text = "جديد"
-                    "تجهيز بالمحل" -> if (raw != "تجهيز") tv.text = "تجهيز"
-                    "جاهز بالمحل" -> if (raw != "في الطريق") tv.text = "في الطريق"
-                    "تم الاستلام" -> if (raw != "تم التسليم") tv.text = "تم التسليم"
-                    "🏪" -> tv.text = "🚚"
-                    "🤝" -> tv.text = "✅"
-                    else -> {
-                        if (raw.contains("🏪") && raw.any { it.isDigit() } && !raw.contains("استلام") && !raw.contains("المحل")) {
-                            tv.text = raw.replace("🏪", "🚚")
-                        } else if (raw.contains("🤝") && raw.any { it.isDigit() } && !raw.contains("تم")) {
-                            tv.text = raw.replace("🤝", "✅")
+        // Update the 4 stage filter boxes by pairing each count+icon TextView with its sibling label TextView
+        for (vg in allViewGroups) {
+            if (vg.childCount == 2) {
+                val c0 = vg.getChildAt(0)
+                val c1 = vg.getChildAt(1)
+                if (c0 is android.widget.TextView && c1 is android.widget.TextView) {
+                    val topRaw = c0.text?.toString() ?: ""
+                    val botRaw = (c1.text?.toString() ?: "").trim()
+                    val numMatch = Regex("(\\d+)").find(topRaw)?.value
+
+                    if (numMatch != null) {
+                        when (botRaw) {
+                            "جديد", "طلب بالمحل" -> {
+                                val targetTop = if (isPickupActive) "$numMatch 🏪" else "$numMatch ⏳"
+                                val targetBot = if (isPickupActive) "طلب بالمحل" else "جديد"
+                                if (c0.text?.toString() != targetTop) c0.text = targetTop
+                                if (c1.text?.toString() != targetBot) c1.text = targetBot
+                            }
+                            "تجهيز", "تجهيز بالمحل" -> {
+                                val targetTop = "$numMatch 📦"
+                                val targetBot = if (isPickupActive) "تجهيز بالمحل" else "تجهيز"
+                                if (c0.text?.toString() != targetTop) c0.text = targetTop
+                                if (c1.text?.toString() != targetBot) c1.text = targetBot
+                            }
+                            "في الطريق", "جاهز بالمحل" -> {
+                                val targetTop = if (isPickupActive) "$numMatch 🏪" else "$numMatch 🚚"
+                                val targetBot = if (isPickupActive) "جاهز بالمحل" else "في الطريق"
+                                if (c0.text?.toString() != targetTop) c0.text = targetTop
+                                if (c1.text?.toString() != targetBot) c1.text = targetBot
+                            }
+                            "تم التسليم", "تم الاستلام" -> {
+                                val targetTop = if (isPickupActive) "$numMatch 🤝" else "$numMatch ✅"
+                                val targetBot = if (isPickupActive) "تم الاستلام" else "تم التسليم"
+                                if (c0.text?.toString() != targetTop) c0.text = targetTop
+                                if (c1.text?.toString() != targetBot) c1.text = targetBot
+                            }
                         }
                     }
                 }
             }
         }
     }
-
 }
