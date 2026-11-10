@@ -42,6 +42,8 @@ class MerchantCockpitOverlayView(
     private val onToggleStore: (String, Boolean) -> Unit,
     private val onSelectStore: (String) -> Unit
 ) : LinearLayout(context) {
+    private var currentOrderIsPickup: Boolean = false
+    private val stageTabViews = mutableListOf<android.widget.TextView>()
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val prefs = context.getSharedPreferences("dz_merchant_cockpit_prefs", Context.MODE_PRIVATE)
