@@ -1869,7 +1869,7 @@ class MerchantCockpitOverlayView(
                 ).apply { cornerRadius = dp(14).toFloat() }
             }
             else -> {
-                primaryActionBtn.text = if (isPickupOrd) "✅ تم الاستلام والدفع بالمحل" else "✅ طلب مكتمل ومُسلم"
+                primaryActionBtn.text = if (isPickupOrd) "🤝 تم الاستلام والدفع بالمحل" else "✅ طلب مكتمل ومُسلم"
                 primaryActionBtn.background = GradientDrawable().apply {
                     cornerRadius = dp(14).toFloat()
                     setColor(Color.parseColor("#064E3B"))
