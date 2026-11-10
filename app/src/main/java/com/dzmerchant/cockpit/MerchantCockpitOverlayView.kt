@@ -117,6 +117,7 @@ class MerchantCockpitOverlayView(
         (value * resources.displayMetrics.density).toInt()
 
     init {
+        viewTreeObserver.addOnGlobalLayoutListener { try { syncDynamicPickupStageIcons(this) } catch (_: Exception) {} }
         orientation = VERTICAL
         gravity = Gravity.END
 
@@ -1961,11 +1962,76 @@ class MerchantCockpitOverlayView(
                 setOnClickListener {
                     selectedStoreFilter = "all"
                     onSelectStore("all")
+            
+    private fun syncDynamicPickupStageIcons(root: android.view.View) {
+        val allTextViews = mutableListOf<android.widget.TextView>()
+        fun collect(v: android.view.View) {
+            if (v is android.widget.TextView) {
+                allTextViews.add(v)
+            } else if (v is android.view.ViewGroup) {
+                for (i in 0 until v.childCount) {
+                    collect(v.getChildAt(i))
                 }
             }
-            storeTabsRow.addView(allPill)
+        }
+        collect(root)
 
-            refreshAllAnalyticsAndCards()
+        var isPickupActive = false
+        for (tv in allTextViews) {
+            if (tv.visibility == android.view.View.VISIBLE) {
+                val t = tv.text?.toString() ?: ""
+                if (
+                    t.contains("استلام شخصي") ||
+                    t.contains("استلام بالمحل") ||
+                    t.contains("استلام وسيط") ||
+                    t.contains("بطاقة استلام") ||
+                    t.contains("بانتظار المستلم") ||
+                    t.contains("والدفع بالمحل") ||
+                    t.contains("تجهيز الطلب بالمحل")
+                ) {
+                    isPickupActive = true
+                    break
+                }
+            }
+        }
+
+        for (tv in allTextViews) {
+            val raw = tv.text?.toString() ?: ""
+            val trimmed = raw.trim()
+            if (isPickupActive) {
+                when (trimmed) {
+                    "جديد" -> if (raw != "طلب بالمحل") tv.text = "طلب بالمحل"
+                    "تجهيز" -> if (raw != "تجهيز بالمحل") tv.text = "تجهيز بالمحل"
+                    "في الطريق" -> if (raw != "جاهز بالمحل") tv.text = "جاهز بالمحل"
+                    "تم التسليم" -> if (raw != "تم الاستلام") tv.text = "تم الاستلام"
+                    "🚚" -> tv.text = "🏪"
+                    "✅" -> tv.text = "🤝"
+                    else -> {
+                        if (raw.contains("🚚") && raw.any { it.isDigit() }) {
+                            tv.text = raw.replace("🚚", "🏪")
+                        } else if (raw.contains("✅") && raw.any { it.isDigit() } && !raw.contains("تم")) {
+                            tv.text = raw.replace("✅", "🤝")
+                        }
+                    }
+                }
+            } else {
+                when (trimmed) {
+                    "طلب بالمحل" -> if (raw != "جديد") tv.text = "جديد"
+                    "تجهيز بالمحل" -> if (raw != "تجهيز") tv.text = "تجهيز"
+                    "جاهز بالمحل" -> if (raw != "في الطريق") tv.text = "في الطريق"
+                    "تم الاستلام" -> if (raw != "تم التسليم") tv.text = "تم التسليم"
+                    "🏪" -> tv.text = "🚚"
+                    "🤝" -> tv.text = "✅"
+                    else -> {
+                        if (raw.contains("🏪") && raw.any { it.isDigit() } && !raw.contains("استلام") && !raw.contains("المحل")) {
+                            tv.text = raw.replace("🏪", "🚚")
+                        } else if (raw.contains("🤝") && raw.any { it.isDigit() } && !raw.contains("تم")) {
+                            tv.text = raw.replace("🤝", "✅")
+                        }
+                    }
+                }
+            }
         }
     }
+
 }
