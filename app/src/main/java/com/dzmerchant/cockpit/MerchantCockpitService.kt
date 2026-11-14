@@ -39,6 +39,8 @@ class MerchantCockpitService : Service() {
     private var windowParams: WindowManager.LayoutParams? = null
     private var storeFilter: String = "all"
     private val handler = Handler(Looper.getMainLooper())
+    private val realtimeClient = SupabaseRealtimeClient { triggerSync(forceOpen = false) }
+    @Volatile private var lastSyncAtMs: Long = 0L
     private var isStealthHidden = false
     private var lastKnownNewOrdersCount = -1
     private var lastKnownTopOrderId: String = ""
@@ -54,7 +56,7 @@ class MerchantCockpitService : Service() {
     private val syncRunnable = object : Runnable {
         override fun run() {
             triggerSync(forceOpen = false)
-            handler.postDelayed(this, 2500)
+            handler.postDelayed(this, if (realtimeClient.isConnected) 180000L else 20000L)
         }
     }
 
@@ -385,10 +387,13 @@ class MerchantCockpitService : Service() {
         bgScheduler?.scheduleAtFixedRate({
             try {
                 if (isServiceAlive) {
-                    triggerSync(forceOpen = false)
+                    val elapsed = System.currentTimeMillis() - lastSyncAtMs
+                    if (!realtimeClient.isConnected || elapsed >= 180000L) {
+                        triggerSync(forceOpen = false)
+                    }
                 }
             } catch (_: Exception) {}
-        }, 3, 4, java.util.concurrent.TimeUnit.SECONDS)
+        }, 15, 60, java.util.concurrent.TimeUnit.SECONDS)
 
         try {
             screenStateReceiver = object : android.content.BroadcastReceiver() {
@@ -630,6 +635,13 @@ class MerchantCockpitService : Service() {
     private fun triggerSync(forceOpen: Boolean) {
         Thread {
             val payload = CockpitApiClient.fetchCockpit(storeFilter)
+                lastSyncAtMs = System.currentTimeMillis()
+                if (CockpitApiClient.realtimeUrl.isNotBlank() && CockpitApiClient.realtimeKey.isNotBlank()) {
+                    val rtFilter = if (storeFilter != "all" && CockpitApiClient.lastStoreId.isNotBlank()) {
+                        "store_id=eq.${CockpitApiClient.lastStoreId}"
+                    } else ""
+                    realtimeClient.ensureStarted(CockpitApiClient.realtimeUrl, CockpitApiClient.realtimeKey, rtFilter)
+                }
             if (payload != null) {
                 val currentTopNewOrder = payload.orders.firstOrNull { it.stage == "new" }
                 val currentTopId = currentTopNewOrder?.id ?: ""
@@ -675,6 +687,7 @@ class MerchantCockpitService : Service() {
     }
 
     override fun onDestroy() {
+        try { realtimeClient.stop() } catch (_: Exception) {}
         super.onDestroy()
         isServiceAlive = false
         try { bgScheduler?.shutdownNow() } catch (_: Exception) {}

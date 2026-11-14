@@ -67,6 +67,9 @@ data class CockpitPayload(
 
 object CockpitApiClient {
     private const val BASE_URL = "https://my-private-store-app.vercel.app/api/merchant/cockpit"
+    @Volatile var realtimeUrl: String = ""
+    @Volatile var realtimeKey: String = ""
+    @Volatile var lastStoreId: String = ""
 
     fun fetchCockpit(storeSlug: String = "all"): CockpitPayload? {
         var conn: HttpURLConnection? = null
@@ -87,6 +90,18 @@ object CockpitApiClient {
             reader.close()
 
             val json = JSONObject(raw)
+            json.optJSONObject("realtime")?.let { rt ->
+                val u = rt.optString("url", "")
+                val k = rt.optString("key", "")
+                if (u.isNotBlank() && k.isNotBlank()) {
+                    realtimeUrl = u
+                    realtimeKey = k
+                }
+            }
+            val topStoreId = json.optString("storeId", "")
+            if (topStoreId.isNotBlank()) {
+                lastStoreId = topStoreId
+            }
             val storesArr = json.optJSONArray("stores")
             val storesList = mutableListOf<StoreSummary>()
             if (storesArr != null) {
