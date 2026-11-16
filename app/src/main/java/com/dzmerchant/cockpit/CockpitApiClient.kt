@@ -47,6 +47,8 @@ data class MerchantOrderItem(
     val relativeTime: String,
     val createdAtMs: Long,
     val items: MutableList<OrderDetailItem>,
+    val duoAlertType: String = "",
+    val duoAlertText: String = "",
     val isPickup: Boolean = wilaya.contains("استلام") || wilaya.contains("المحل") || wilaya.contains("PICKUP") || itemsSummary.contains("استلام")
 )
 
@@ -180,7 +182,9 @@ object CockpitApiClient {
                             stage = o.optString("stage", "new"),
                             relativeTime = o.optString("relativeTime", "الآن"),
                             createdAtMs = o.optLong("createdAtMs", System.currentTimeMillis()),
-                            items = parsedItems
+                            items = parsedItems,
+                            duoAlertType = o.optString("duo_alert_type", ""),
+                            duoAlertText = o.optString("duo_alert_text", "")
                         )
                     )
                 }

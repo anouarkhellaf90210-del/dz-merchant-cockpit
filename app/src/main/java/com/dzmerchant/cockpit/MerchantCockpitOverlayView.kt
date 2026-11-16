@@ -90,6 +90,7 @@ class MerchantCockpitOverlayView(
     // شريط المنتجات القابل للضغط + درج تأكيد وتعديل الطلبية المدمج
     private val itemsSummaryBar: LinearLayout
     private val itemsSummaryText: TextView
+    private val duoAlertBannerText: TextView
     private val itemsExpandHintBadge: TextView
     private val inlineConfirmationDrawer: LinearLayout
     private val primaryActionBtn: TextView
@@ -865,6 +866,17 @@ class MerchantCockpitOverlayView(
 
         itemsSummaryBar.addView(itemsExpandHintBadge)
         itemsSummaryBar.addView(itemsSummaryText)
+        duoAlertBannerText = TextView(context).apply {
+            visibility = View.GONE
+            textSize = 13.5f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(8)
+            }
+        }
+        orderDeck.addView(duoAlertBannerText)
         orderDeck.addView(itemsSummaryBar)
 
         inlineConfirmationDrawer = LinearLayout(context).apply {
@@ -1401,7 +1413,6 @@ class MerchantCockpitOverlayView(
                 text = buildString {
                     append("$deliveryLabel • ${ord.wilaya}")
                     if (ord.commune.isNotBlank()) append(" - ${ord.commune}")
-                    if (ord.notes.isNotBlank()) append("\n📝 ملاحظة: ${ord.notes}")
                 }
                 setTextColor(Color.parseColor("#D4D4D8"))
                 textSize = 10.5f
@@ -1414,6 +1425,25 @@ class MerchantCockpitOverlayView(
             row.addView(editBtn)
             row.addView(addrInfo)
             custBox.addView(row)
+            if (ord.notes.isNotBlank()) {
+                val notesBox = TextView(context).apply {
+                    text = "📝 ملاحظة: ${ord.notes}"
+                    setTextColor(Color.parseColor("#E0F2FE"))
+                    textSize = 12.5f
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.END
+                    setPadding(dp(9), dp(7), dp(9), dp(7))
+                    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = dp(6)
+                    }
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(8).toFloat()
+                        setColor(Color.parseColor("#082F49"))
+                        setStroke(dp(1), Color.parseColor("#38BDF8"))
+                    }
+                }
+                custBox.addView(notesBox)
+            }
         } else {
             val nameEd = createEditInput(ord.customerName, "اسم الزبون")
             val phoneEd = createEditInput(ord.customerPhone, "رقم الهاتف", InputType.TYPE_CLASS_PHONE)
@@ -1822,6 +1852,7 @@ class MerchantCockpitOverlayView(
             customerPhoneText.text = "---"
             orderPriceText.text = "0 د.ج"
             wilayaBadgeText.text = "📍 ---"
+            duoAlertBannerText.visibility = View.GONE
             itemsSummaryText.text = "لا توجد سلع للعرض حالياً"
             itemsExpandHintBadge.text = "📋 التفاصيل ▾"
             btnDetailsToggle.text = "التفاصيل ▾"
@@ -1842,7 +1873,47 @@ class MerchantCockpitOverlayView(
         carrierBadgeText.text = ord.carrier
         orderPriceText.text = "${nf.format(ord.total)} د.ج"
         wilayaBadgeText.text = "📍 ${ord.wilaya}"
-        itemsSummaryText.text = "📦 ${ord.itemsSummary}"
+        val detectedAlertType = when {
+            ord.duoAlertType.isNotBlank() -> ord.duoAlertType
+            ord.notes.contains("التريث") || ord.notes.contains("التريّث") || ord.itemsSummary.contains("تريّث") || ord.itemsSummary.contains("تريث") -> "hold"
+            ord.notes.contains("شريك التوصيل") || ord.itemsSummary.contains("اكتمل") -> "partner_joined"
+            else -> ""
+        }
+        val detectedAlertText = when {
+            ord.duoAlertText.isNotBlank() -> ord.duoAlertText
+            detectedAlertType == "hold" -> "🚨⏳ تنبيه عاجل: الزبون يطلب التريّث — لا تشحن قبل انضمام شريكه!"
+            detectedAlertType == "partner_joined" -> "✅🤝 اكتمل التوصيل الثنائي — اشحن الطلبين معاً!"
+            else -> ""
+        }
+        if (detectedAlertText.isNotBlank()) {
+            duoAlertBannerText.visibility = View.VISIBLE
+            duoAlertBannerText.text = detectedAlertText
+            if (detectedAlertType == "hold") {
+                duoAlertBannerText.setTextColor(Color.parseColor("#FDE68A"))
+                duoAlertBannerText.background = GradientDrawable().apply {
+                    cornerRadius = dp(11).toFloat()
+                    setColor(Color.parseColor("#451A03"))
+                    setStroke(dp(2), Color.parseColor("#F59E0B"))
+                }
+            } else {
+                duoAlertBannerText.setTextColor(Color.parseColor("#ECFDF5"))
+                duoAlertBannerText.background = GradientDrawable().apply {
+                    cornerRadius = dp(11).toFloat()
+                    setColor(Color.parseColor("#064E3B"))
+                    setStroke(dp(2), Color.parseColor("#10B981"))
+                }
+            }
+        } else {
+            duoAlertBannerText.visibility = View.GONE
+        }
+
+        val cleanItemsLine = ord.itemsSummary
+            .replace(Regex("🚨?⏳\\s*【[^】]+】\\s*•?\\s*"), "")
+            .replace(Regex("✅?🤝\\s*【[^】]+】\\s*•?\\s*"), "")
+            .replace(Regex("⏳\\s*\\[[^\\]]+\\]\\s*•?\\s*"), "")
+            .replace(Regex("🤝\\s*\\[[^\\]]+\\]\\s*•?\\s*"), "")
+            .trim()
+        itemsSummaryText.text = "📦 ${if (cleanItemsLine.isNotEmpty()) cleanItemsLine else ord.itemsSummary}"
         itemsExpandHintBadge.text = if (isDetailsDrawerOpen) "▴ إخفاء" else "📋 التفاصيل ▾"
         btnDetailsToggle.text = if (isDetailsDrawerOpen) "إخفاء ▴" else "التفاصيل ▾"
         primaryActionBtn.alpha = 1f
