@@ -56,7 +56,7 @@ class MerchantCockpitService : Service() {
     private val syncRunnable = object : Runnable {
         override fun run() {
             triggerSync(forceOpen = false)
-            handler.postDelayed(this, if (realtimeClient.isConnected) 180000L else 20000L)
+            handler.postDelayed(this, if (realtimeClient.isConnected) 300000L else 120000L)
         }
     }
 
@@ -388,7 +388,7 @@ class MerchantCockpitService : Service() {
             try {
                 if (isServiceAlive) {
                     val elapsed = System.currentTimeMillis() - lastSyncAtMs
-                    if (!realtimeClient.isConnected || elapsed >= 180000L) {
+                    if (!realtimeClient.isConnected || elapsed >= 300000L) {
                         triggerSync(forceOpen = false)
                     }
                 }

@@ -76,14 +76,13 @@ object CockpitApiClient {
     fun fetchCockpit(storeSlug: String = "all"): CockpitPayload? {
         var conn: HttpURLConnection? = null
         return try {
-            val url = URL("$BASE_URL?store=$storeSlug&_cb=${System.currentTimeMillis()}")
+            val url = URL("$BASE_URL?store=$storeSlug")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 8000
                 readTimeout = 8000
                 useCaches = false
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("Cache-Control", "no-cache")
             }
             if (conn.responseCode != 200) return null
 
