@@ -211,6 +211,7 @@ class MerchantCockpitService : Service() {
             playOrderArrivalChime()
         }
         triggerSync(forceOpen = forceOpen)
+        DzFcmMessagingService.syncCurrentToken(this)
         return START_NOT_STICKY /* QUOTA_SHIELD_COCKPIT_A */
     }
 

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "825833537685",
+    "project_id": "elitemarket-dz-push",
+    "storage_bucket": "elitemarket-dz-push.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:825833537685:android:1e46aee29c947a4735db9c",
+        "android_client_info": {
+          "package_name": "com.dzmerchant.cockpit"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAykgydqFnBCtTeThmiiKGozUobPqFBW4k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:825833537685:android:e8c4a43547f0ceeb35db9c",
+        "android_client_info": {
+          "package_name": "com.dzradar.companion"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAykgydqFnBCtTeThmiiKGozUobPqFBW4k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
