@@ -79,6 +79,7 @@ object CockpitApiClient {
             val url = URL("$BASE_URL?store=$storeSlug")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
+                setRequestProperty("X-Dz-App-Ver", "2")
                 connectTimeout = 8000
                 readTimeout = 8000
                 useCaches = false
@@ -216,6 +217,7 @@ object CockpitApiClient {
             val url = URL(BASE_URL)
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
+                setRequestProperty("X-Dz-App-Ver", "2")
                 connectTimeout = 8000
                 readTimeout = 8000
                 doOutput = true
@@ -244,6 +246,7 @@ object CockpitApiClient {
             val url = URL(BASE_URL)
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
+                setRequestProperty("X-Dz-App-Ver", "2")
                 connectTimeout = 9000
                 readTimeout = 9000
                 doOutput = true
@@ -293,6 +296,7 @@ object CockpitApiClient {
             val url = URL(BASE_URL)
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
+                setRequestProperty("X-Dz-App-Ver", "2")
                 connectTimeout = 8000
                 readTimeout = 8000
                 doOutput = true
@@ -327,6 +331,7 @@ object CockpitApiClient {
             val url = URL("http://127.0.0.1:49210/set-station?station=$station&status=$nextStatus&_cb=${System.currentTimeMillis()}")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
+                setRequestProperty("X-Dz-App-Ver", "2")
                 connectTimeout = 800
                 readTimeout = 800
             }
