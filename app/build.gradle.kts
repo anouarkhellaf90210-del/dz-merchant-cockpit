@@ -12,8 +12,14 @@ android {
         applicationId = "com.dzmerchant.cockpit"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0.5"
+        versionCode = 6
+        versionName = "1.0.6"
+        val sec = (System.getenv("COCKPIT_APP_SECRET") ?: "").replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "COCKPIT_APP_SECRET", "\"$sec\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

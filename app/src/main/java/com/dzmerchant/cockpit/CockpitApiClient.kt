@@ -80,6 +80,7 @@ object CockpitApiClient {
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 setRequestProperty("X-Dz-App-Ver", "2")
+                setRequestProperty("X-Cockpit-Secret", BuildConfig.COCKPIT_APP_SECRET)
                 connectTimeout = 8000
                 readTimeout = 8000
                 useCaches = false
@@ -218,6 +219,7 @@ object CockpitApiClient {
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 setRequestProperty("X-Dz-App-Ver", "2")
+                setRequestProperty("X-Cockpit-Secret", BuildConfig.COCKPIT_APP_SECRET)
                 connectTimeout = 8000
                 readTimeout = 8000
                 doOutput = true
@@ -247,6 +249,7 @@ object CockpitApiClient {
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 setRequestProperty("X-Dz-App-Ver", "2")
+                setRequestProperty("X-Cockpit-Secret", BuildConfig.COCKPIT_APP_SECRET)
                 connectTimeout = 9000
                 readTimeout = 9000
                 doOutput = true
@@ -297,6 +300,7 @@ object CockpitApiClient {
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 setRequestProperty("X-Dz-App-Ver", "2")
+                setRequestProperty("X-Cockpit-Secret", BuildConfig.COCKPIT_APP_SECRET)
                 connectTimeout = 8000
                 readTimeout = 8000
                 doOutput = true
@@ -332,6 +336,7 @@ object CockpitApiClient {
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 setRequestProperty("X-Dz-App-Ver", "2")
+                setRequestProperty("X-Cockpit-Secret", BuildConfig.COCKPIT_APP_SECRET)
                 connectTimeout = 800
                 readTimeout = 800
             }

@@ -1235,7 +1235,7 @@ class MerchantCockpitOverlayView(
                 setColor(Color.parseColor("#1F1F23"))
             }
             setOnClickListener {
-                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://my-private-store-app.vercel.app/merchant/orders")).apply {
+                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://elitemarketdz.top/merchant/orders")).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(browserIntent)

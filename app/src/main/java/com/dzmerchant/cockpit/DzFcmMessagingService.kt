@@ -59,6 +59,8 @@ class DzFcmMessagingService : FirebaseMessagingService() {
                         readTimeout = 5000
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")
+                        setRequestProperty("X-Dz-App-Ver", "2")
+                        setRequestProperty("X-Cockpit-Secret", BuildConfig.COCKPIT_APP_SECRET)
                     }
                     OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()) }
                     conn.responseCode

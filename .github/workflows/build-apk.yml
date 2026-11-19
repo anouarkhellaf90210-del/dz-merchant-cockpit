@@ -26,6 +26,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build Debug & Release APKs
+        env:
+          COCKPIT_APP_SECRET: ${{ secrets.COCKPIT_APP_SECRET }}
         run: |
           gradle wrapper --gradle-version 8.2
           chmod +x gradlew
