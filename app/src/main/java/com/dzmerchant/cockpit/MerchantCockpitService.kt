@@ -56,7 +56,7 @@ class MerchantCockpitService : Service() {
     private val syncRunnable = object : Runnable {
         override fun run() {
             triggerSync(forceOpen = false)
-            handler.postDelayed(this, if (realtimeClient.isConnected) 300000L else 120000L)
+            handler.postDelayed(this, if (realtimeClient.isConnected) 600000L else 300000L)
         }
     }
 
@@ -211,7 +211,7 @@ class MerchantCockpitService : Service() {
             playOrderArrivalChime()
         }
         triggerSync(forceOpen = forceOpen)
-        return START_STICKY
+        return START_NOT_STICKY /* QUOTA_SHIELD_COCKPIT_A */
     }
 
     @SuppressLint("ClickableViewAccessibility", "WakelockTimeout")
@@ -223,7 +223,7 @@ class MerchantCockpitService : Service() {
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dzmerchant:CockpitWatchdog")?.apply { setReferenceCounted(false) }
-            if (wakeLock?.isHeld == false) wakeLock?.acquire()
+            if (wakeLock?.isHeld == false) wakeLock?.acquire(5000L)
         } catch (_: Exception) {}
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -388,7 +388,7 @@ class MerchantCockpitService : Service() {
             try {
                 if (isServiceAlive) {
                     val elapsed = System.currentTimeMillis() - lastSyncAtMs
-                    if (!realtimeClient.isConnected || elapsed >= 300000L) {
+                    if (!realtimeClient.isConnected && elapsed >= 600000L) {
                         triggerSync(forceOpen = false)
                     }
                 }
@@ -398,7 +398,9 @@ class MerchantCockpitService : Service() {
         try {
             screenStateReceiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(ctx: Context?, intent: Intent?) {
-                    if (intent?.action == Intent.ACTION_SCREEN_ON || intent?.action == Intent.ACTION_USER_PRESENT) {
+                    if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                try { realtimeClient.stop() } catch (_: Exception) {}
+            } else if (intent?.action == Intent.ACTION_SCREEN_ON) {
                         triggerSync(forceOpen = false)
                     }
                 }
@@ -406,7 +408,7 @@ class MerchantCockpitService : Service() {
             val filter = android.content.IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(Intent.ACTION_USER_PRESENT)
+                addAction(Intent.ACTION_SCREEN_OFF)
             }
             registerReceiver(screenStateReceiver, filter)
         } catch (_: Exception) {}

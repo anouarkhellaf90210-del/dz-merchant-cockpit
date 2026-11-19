@@ -53,7 +53,7 @@ class SupabaseRealtimeClient(
                     socket = null
                 }
                 if (running.get()) {
-                    try { Thread.sleep(5000) } catch (_: InterruptedException) { break }
+                    try { Thread.sleep(30000) /* QUOTA_SHIELD_WS_V2 */ } catch (_: InterruptedException) { break }
                 }
             }
         }
@@ -76,7 +76,7 @@ class SupabaseRealtimeClient(
 
         val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
         val ssl = factory.createSocket(host, port) as SSLSocket
-        ssl.soTimeout = 45000
+        ssl.soTimeout = 65000
         ssl.startHandshake()
         socket = ssl
 
@@ -143,7 +143,7 @@ class SupabaseRealtimeClient(
             var refId = 2
             while (running.get() && isConnected) {
                 try {
-                    Thread.sleep(25000)
+                    Thread.sleep(45000)
                     if (!running.get() || !isConnected) break
                     val hb = JSONObject().apply {
                         put("topic", "phoenix")

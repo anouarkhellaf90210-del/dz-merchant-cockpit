@@ -68,7 +68,7 @@ data class CockpitPayload(
 )
 
 object CockpitApiClient {
-    private const val BASE_URL = "https://my-private-store-app.vercel.app/api/merchant/cockpit"
+    private const val BASE_URL = "https://elitemarketdz.top/api/merchant/cockpit"
     @Volatile var realtimeUrl: String = ""
     @Volatile var realtimeKey: String = ""
     @Volatile var lastStoreId: String = ""
