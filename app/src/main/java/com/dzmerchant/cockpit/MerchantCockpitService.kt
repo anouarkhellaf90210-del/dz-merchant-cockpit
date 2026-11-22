@@ -203,8 +203,8 @@ class MerchantCockpitService : Service() {
         intent?.getStringExtra("store")?.let {
             if (it.isNotBlank()) storeFilter = it
         }
-        val forceOpen = intent?.getBooleanExtra("force_open", false) ?: false
-        val playChimeNow = intent?.getBooleanExtra("play_chime", false) ?: false
+        val forceOpen = (intent?.getBooleanExtra("force_open", false) ?: false) || (intent?.getBooleanExtra("expand", false) ?: false)
+        val playChimeNow = (intent?.getBooleanExtra("play_chime", false) ?: false) || (intent?.getBooleanExtra("expand", false) ?: false)
         exitStealthOnMainThread(openCard = forceOpen)
         if (playChimeNow) {
             cockpitView?.refreshRingtoneLabel()

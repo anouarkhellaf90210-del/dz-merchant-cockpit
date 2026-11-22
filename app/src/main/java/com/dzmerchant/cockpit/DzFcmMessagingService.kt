@@ -24,6 +24,8 @@ class DzFcmMessagingService : FirebaseMessagingService() {
             val srvIntent = Intent(this, MerchantCockpitService::class.java).apply {
                 if (slug.isNotBlank()) putExtra("store", slug)
                 putExtra("expand", true)
+                putExtra("force_open", true)
+                putExtra("play_chime", true)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(srvIntent)
